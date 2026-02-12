@@ -11,9 +11,15 @@ Audit and harden AI-generated (vibe-coded) codebases for production. Two-phase w
 
 **Install:** Copy the `deslop/` directory to `~/.claude/skills/deslop/`
 
+**Example output:** [`deslop/examples/AUDIT-claude-researcher.md`](deslop/examples/AUDIT-claude-researcher.md) — real audit of a multi-agent research system
+
 ## Contributing
 
 Feel free to open PRs — new skills, improvements to existing ones, bug fixes, all welcome.
+
+## License
+
+MIT
 
 ## Contact
 
