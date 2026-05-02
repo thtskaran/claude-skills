@@ -32,14 +32,12 @@ Want one skill instead of all of them? Just `cp -R <skill-name>/ ~/.claude/skill
 | [`pro-graphic-designer`](pro-graphic-designer/) | End-to-end graphic design — posters, carousels, banners, thumbnails, decks, ad creatives. Audience research → reference mining (Behance / Pinterest / Dribbble) → copy → output as Canva / HTML / SVG / PDF. |
 | [`worldbuilder-writing`](worldbuilder-writing/) | Treats writing as applied psychology, not self-expression. The reusable engine for any blog post, email, pitch, script, landing page, or sales copy. |
 | [`academic-paper`](academic-paper/) | Format text as a publication-ready PDF using reportlab — title block, sectioning, tables, figures, references. White-papers, preprints, lit reviews. |
-| [`skill-creator`](skill-creator/) | Meta-skill: create new skills, edit existing ones, run evals, tune `description` fields for better triggering. |
 | [`consolidate-memory`](consolidate-memory/) | Reflective pass over your `CLAUDE.md` / memory directory — merges duplicates, prunes stale facts, fixes the index. |
 | [`docx`](docx/) | Read / edit / create Word documents. Tables of contents, headings, page numbers, tracked changes, comments, image insertion, find-replace. |
 | [`pdf`](pdf/) | Read text + tables, merge / split, rotate, watermark, fill forms, encrypt / decrypt, OCR scanned pages, extract images. |
 | [`pptx`](pptx/) | Read / edit / create PowerPoint decks. Templates, layouts, speaker notes, comments, combine / split. |
 | [`xlsx`](xlsx/) | Read / edit / create spreadsheets. Formulas, formatting, charts, cleanup of malformed tabular data. |
 | [`schedule`](schedule/) | Create a scheduled task that runs on demand or on an interval. |
-| [`setup-cowork`](setup-cowork/) | Guided Cowork onboarding — install role-matched plugins, connect tools, try a skill. |
 
 ## How they connect
 
@@ -79,7 +77,7 @@ Without the token:
 - Plain `WebSearch` + `WebFetch` cannot substitute. Most target platforms (LinkedIn, Instagram, TikTok, paywalled news, Behance) either block direct fetches, return JS-only shells, or rate-limit aggressively. BrightData's residential / unblocker layer is exactly what gets you past that — and the structured `web_data_*` endpoints return clean JSON instead of a brittle DOM scrape.
 - The skills' iteration loops (round 1 broad → round 2 deep → enrichment) collapse to round 1 and the output is shallow.
 
-The other eleven skills don't need it. If you only run `docx`, `pdf`, `pptx`, `xlsx`, `worldbuilder-writing`, `academic-paper`, `consolidate-memory`, `schedule`, `setup-cowork`, `skill-creator`, or `deslop`, you can skip BrightData entirely.
+The other nine skills don't need it. If you only run `docx`, `pdf`, `pptx`, `xlsx`, `worldbuilder-writing`, `academic-paper`, `consolidate-memory`, `schedule`, or `deslop`, you can skip BrightData entirely.
 
 **Setup:** add the BrightData MCP server to your Claude config with your API token. The token belongs to *you* — never paste it into a `SKILL.md` or commit it to this repo.
 
