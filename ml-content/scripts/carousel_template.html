@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>[Project Title] — Chapter NN</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&display=swap" rel="stylesheet">
+
+<style>
+/* CMU Serif via dreampulse CDN */
+@font-face { font-family: 'Computer Modern'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts/Serif/cmun-serif-roman.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Computer Modern'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts/Serif/cmun-serif-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Computer Modern'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts/Serif/cmun-serif-bold.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Computer Modern'; src: url('https://cdn.jsdelivr.net/gh/dreampulse/computer-modern-web-font@master/fonts/Serif/cmun-serif-bolditalic.woff2') format('woff2'); font-weight: 600; font-style: italic; font-display: swap; }
+</style>
+
+<style>
+:root {
+  /* Locked across ml-content brand */
+  --bg:        #0E1014;
+  --surface:   #14171F;
+  --grid:      #1A1F2B;
+  --text:      #ECECEC;
+  --body:      #A8AEB8;
+  --mute:      #5A6175;
+  --hairline:  #2A2F3A;
+
+  /* Manim canonical palette — choose ONE primary accent per project */
+  --blue:    #58C4DD;
+  --red:     #FC6255;
+  --yellow:  #F7D96F;
+  --green:   #83C167;
+  --teal:    #5CD0B3;
+  --purple:  #9A72AC;
+  --orange:  #FF862F;
+  --gold:    #F0AC5F;
+  --amber:   #F0AC5F;
+
+  /* Project accents — set these per-project */
+  --primary:    var(--amber);    /* PROJECT PRIMARY — change per project */
+  --secondary:  var(--blue);     /* PROJECT SECONDARY */
+  --highlight:  var(--orange);   /* PROJECT HERO HIGHLIGHT */
+
+  /* Type stack */
+  --math: 'Computer Modern', 'EB Garamond', 'CMU Serif', Cambria, 'Times New Roman', serif;
+  --body-font: 'Inter Tight', 'Inter', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: #050709;
+  font-family: var(--body-font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 32px;
+  align-items: center;
+}
+
+.slide {
+  width: 1080px;
+  height: 1350px;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+  font-family: var(--body-font);
+  color: var(--text);
+}
+
+.slide-label {
+  position: absolute;
+  bottom: -28px;
+  left: 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #555;
+  letter-spacing: 0.18em;
+}
+
+/* ===== chrome (top + bottom strips on every slide) ===== */
+.chrome-top {
+  position: absolute;
+  top: 48px; left: 80px; right: 80px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: 11px;
+  color: var(--mute); letter-spacing: 0.16em; text-transform: uppercase;
+}
+.chrome-top .right { color: var(--primary); font-weight: 500; }
+
+.chrome-bottom {
+  position: absolute;
+  bottom: 48px; left: 80px; right: 80px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--mute); letter-spacing: 0.16em; text-transform: uppercase;
+}
+
+.dot-row { display: inline-block; font-size: 0; line-height: 0; }
+.dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--mute);
+  margin-left: 6px;
+}
+.dot.active { background: var(--primary); }
+
+/* ===== content frame (all slide bodies sit inside this) ===== */
+.frame {
+  position: absolute;
+  top: 110px; bottom: 110px;
+  left: 80px; right: 80px;
+  display: flex; flex-direction: column;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin-bottom: 18px;
+}
+
+h1 {
+  font-family: var(--body-font);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  line-height: 1.06;
+  color: var(--text);
+}
+
+p {
+  font-family: var(--body-font);
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--body);
+}
+
+.caption {
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--body);
+}
+
+.mono { font-family: var(--mono); letter-spacing: 0.04em; }
+.math { font-family: var(--math); font-style: italic; }
+
+/* ===== slide-specific styles go here, prefixed by slide id =====
+.s1-frame { ... }
+.s1-hero { ... }
+*/
+
+</style>
+</head>
+<body>
+
+<!-- =================== SLIDE 1 =================== -->
+<section class="slide" id="s1">
+  <div class="chrome-top">
+    <span class="left">[Paper Title] · [arXiv ID] · [Date]</span>
+    <span class="right">[CHAPTER TAG] / Chapter NN</span>
+  </div>
+
+  <div class="frame">
+    <div class="eyebrow">The Punchline</div>
+    <h1 style="font-size: 76px; line-height: 1.08; letter-spacing: -0.018em; max-width: 920px;">
+      [Hook line 1]<br>
+      [Hook line 2 — keep numbers in <span style="color: var(--primary);">primary</span> or <span style="color: var(--highlight);">highlight</span>]
+    </h1>
+    <p style="font-size: 22px; line-height: 1.55; max-width: 860px; margin-top: 32px;">
+      [Sub-line — 2–3 sentences setting the scope and citation]
+    </p>
+    <div class="mono" style="margin-top: 32px; color: var(--mute); font-size: 12px; letter-spacing: 0.10em;">
+      [Authors] &middot; [Institutions] &middot; [arXiv ID]
+    </div>
+  </div>
+
+  <div class="chrome-bottom">
+    <span>→ @thtskaran · OBVIX LABS</span>
+    <span class="dot-row">
+      <span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </span>
+  </div>
+
+  <div class="slide-label">slide_01.png</div>
+</section>
+
+<!-- =================== SLIDE 2 — duplicate the structure above for each slide ===================
+   Common slide-2 archetypes:
+   - Premise / why-now (timeline + supporting visual)
+   - Two-section split (top: problem, bottom: prize)
+   - Math hero + 3D inset
+   - 3D landscape + legend below
+   - Card grid (4 archetypes)
+   - Theorem + 2D plot
+   - Hero number + 3D bars + per-cell legend
+   - Schematic + closing line
+==================================================================== -->
+
+<section class="slide" id="s2">
+  <div class="chrome-top">
+    <span class="left">[Paper Title] · [arXiv ID] · [Date]</span>
+    <span class="right">[CHAPTER TAG] / Chapter NN</span>
+  </div>
+  <div class="frame">
+    <div class="eyebrow">[Section name]</div>
+    <h1 style="font-size: 56px;">[Slide title]</h1>
+    <p>[Slide body]</p>
+  </div>
+  <div class="chrome-bottom">
+    <span>→ @thtskaran · OBVIX LABS</span>
+    <span class="dot-row">
+      <span class="dot"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </span>
+  </div>
+  <div class="slide-label">slide_02.png</div>
+</section>
+
+<!-- ... continue for all slides ... -->
+
+</body>
+</html>

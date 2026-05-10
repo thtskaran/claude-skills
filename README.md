@@ -28,6 +28,7 @@ Want one skill instead of all of them? Just `cp -R <skill-name>/ ~/.claude/skill
 |---|---|
 | [`deslop`](deslop/) | Audit and harden AI-generated codebases. Two-phase workflow: structured multi-pass `AUDIT.md`, then safety-tiered fixes. Never touches business logic. |
 | [`autonomous-research`](autonomous-research/) | Reads files in your active directory, runs exhaustive multi-round literature research, self-critiques in loops, and produces a publication-quality PDF. Built for "find the gap, write the thing." |
+| [`ml-content`](ml-content/) | Ship publication-quality ML content — IG carousels, 3Blue1Brown-style explainer videos, posters, paper figures. Deep paper recon (5-file bundle) → real-3D-only design discipline → phone-readable annotations → grounding pass before posting. Locked render pipeline: weasyprint+pdftoppm for static, matplotlib3D for charts, Manim for videos. |
 | [`people-sourcer`](people-sourcer/) | Builds real prospect / candidate / outreach lists. Iterative scraping across LinkedIn, Reddit, X, Instagram, TikTok, YouTube, GitHub. Per-person commentary, not generic blurbs. Outputs a multi-sheet xlsx. |
 | [`pro-graphic-designer`](pro-graphic-designer/) | End-to-end graphic design — posters, carousels, banners, thumbnails, decks, ad creatives. Audience research → reference mining (Behance / Pinterest / Dribbble) → copy → output as Canva / HTML / SVG / PDF. |
 | [`worldbuilder-writing`](worldbuilder-writing/) | Treats writing as applied psychology, not self-expression. The reusable engine for any blog post, email, pitch, script, landing page, or sales copy. |
@@ -49,6 +50,12 @@ autonomous-research ──▶ academic-paper
 people-sourcer ─┬─▶ worldbuilder-writing
                 ├─▶ xlsx
                 └─▶ pro-graphic-designer ──▶ worldbuilder-writing
+
+ml-content ─┬─▶ worldbuilder-writing      (hook + caption construction)
+            ├─▶ pro-graphic-designer      (design discipline, brand-constrained)
+            ├─▶ autonomous-research       (find the paper / fact-check at scale)
+            ├─▶ academic-paper            (when the deliverable is a PDF, not a carousel)
+            └─▶ pptx                       (when the deliverable is a native slide deck)
 ```
 
 | Skill | Depends on | Why |
@@ -58,6 +65,9 @@ people-sourcer ─┬─▶ worldbuilder-writing
 | `people-sourcer` | `xlsx` | Phase 6 output is a multi-sheet xlsx. Read before generating. |
 | `people-sourcer` | `pro-graphic-designer` | Architectural sibling — same scratchpad-driven, iterative-scraping shape. Cross-referenced for shared patterns. |
 | `pro-graphic-designer` | `worldbuilder-writing` | Phase 0 (audience model) and Phase 4 (copy) both run through it. |
+| `ml-content` | `worldbuilder-writing` | The "Hook Construction" stage is worldbuilder's audience-persona / leverage-point / reaction-map pass inlined for ML audiences. Read once before drafting any hook or caption. |
+| `ml-content` | `pro-graphic-designer` | When you want extra design references beyond ml-content's locked brand, lean on pro-graphic-designer's reference-mining workflow — but keep ml-content's brand baseline. |
+| `ml-content` | `autonomous-research` | For full grounding pass on 10+ claims, or when you need to find the right paper to make content about, delegate to autonomous-research. |
 
 `worldbuilder-writing` is the most-depended-on node — install it first if you're picking and choosing. The installer above grabs everything in one shot, so this only matters for cherry-pickers.
 
@@ -77,7 +87,25 @@ Without the token:
 - Plain `WebSearch` + `WebFetch` cannot substitute. Most target platforms (LinkedIn, Instagram, TikTok, paywalled news, Behance) either block direct fetches, return JS-only shells, or rate-limit aggressively. BrightData's residential / unblocker layer is exactly what gets you past that — and the structured `web_data_*` endpoints return clean JSON instead of a brittle DOM scrape.
 - The skills' iteration loops (round 1 broad → round 2 deep → enrichment) collapse to round 1 and the output is shallow.
 
-The other nine skills don't need it. If you only run `docx`, `pdf`, `pptx`, `xlsx`, `worldbuilder-writing`, `academic-paper`, `consolidate-memory`, `schedule`, or `deslop`, you can skip BrightData entirely.
+The other skills don't need it. If you only run `docx`, `pdf`, `pptx`, `xlsx`, `worldbuilder-writing`, `academic-paper`, `consolidate-memory`, `schedule`, `deslop`, or `ml-content`, you can skip BrightData entirely.
+
+### Extra runtime deps for `ml-content`
+
+`ml-content` doesn't need BrightData, but it does shell out to a render pipeline. Install once:
+
+```bash
+# Static carousels / posters
+pip install weasyprint matplotlib numpy
+brew install poppler          # provides pdftoppm
+
+# Videos (only if you do the 3B1B-style explainers)
+pip install manim
+brew install ffmpeg
+# LaTeX — full MacTeX, or BasicTeX + the packages Manim needs
+brew install --cask mactex-no-gui
+```
+
+Fonts: Inter Tight + JetBrains Mono load from Google Fonts at render time; CMU Serif loads from the dreampulse CDN — no local install needed.
 
 **Setup:** add the BrightData MCP server to your Claude config with your API token. The token belongs to *you* — never paste it into a `SKILL.md` or commit it to this repo.
 
