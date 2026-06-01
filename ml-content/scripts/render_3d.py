@@ -1,9 +1,12 @@
 """
-ml-content — matplotlib 3D rendering template.
+ml-content — matplotlib 3D rendering template for STATIC carousel/poster PNGs ONLY.
 
-Use this as the starting point for any 3D PNG asset.
+Scope: animated video is built in manimGL (see manim_scene.py / helpers_template.py),
+NOT matplotlib. Use this file only for a single earned-3D still in an IG carousel or
+poster. The Six Laws still apply where they can: earned-3D-only (no faux-isometric
+parallelogram cubes), one color per concept, <=3 phone-readable annotations.
+
 Locked: dark canvas, LightSource(315,45), phone-readable annotations.
-
 Edit the render_*() functions for the specific math your slide needs.
 """
 
@@ -28,16 +31,17 @@ TEXT = "#ECECEC"
 BODY = "#A8AEB8"
 MUTE = "#5A6175"
 
-# Manim canonical color palette
-BLUE = "#58C4DD"
-RED = "#FC6255"
-YELLOW = "#F7D96F"
-GREEN = "#83C167"
-TEAL = "#5CD0B3"
-PURPLE = "#9A72AC"
-ORANGE = "#FF862F"
-GOLD = "#F0AC5F"
-AMBER = "#F0AC5F"  # alias
+# manimGL palette (verbatim from manim/manimlib/default_config.yml — verified hexes)
+BLUE = "#58C4DD"    # BLUE_C
+RED = "#FC6255"     # RED_C
+YELLOW = "#FFFF00"  # YELLOW_C is PURE yellow (the old #F7D96F was invented/wrong)
+YELLOW_SOFT = "#F4D345"  # YELLOW_D — use this if a softer carousel yellow is wanted
+GREEN = "#83C167"   # GREEN_C
+TEAL = "#5CD0B3"    # TEAL_C
+PURPLE = "#9A72AC"  # PURPLE_C
+ORANGE = "#FF862F"  # standalone (no A-E ladder)
+GOLD = "#F0AC5F"    # GOLD_C
+AMBER = "#F0AC5F"  # alias of GOLD
 
 # -----------------------------------------------------------------------------
 # Phone-readable annotation helper — locked

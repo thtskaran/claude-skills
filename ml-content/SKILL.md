@@ -1,945 +1,535 @@
 ---
 name: ml-content
-description: Generate publication-ready ML content — carousels, 3Blue1Brown-style explainer videos, infographics, posters, paper figures — with deep paper recon, real-3D-only design discipline, phone-readable annotations, exhaustive multi-pass internet research, AHA-first planning, mandatory iteration loops for pixel-perfection, and a full grounding pass before posting.
+description: Generate publication-grade ML explainer videos and carousels the way 3Blue1Brown actually builds them — in real manimGL (NOT Manim Community Edition), as a tiny domain DSL of self-arranging Mobjects choreographed into transform-driven beats where every motion carries meaning. Overlap is prevented at construction time, not policed after render. Use for: 3b1b-style ML videos, paper-figure animations, IG carousels, infographics, posters.
 ---
 
-Generate publication-ready ML content. **Manim is the default video pipeline**; matplotlib is fallback when the environment can't run Manim or the user insists. When we can render ourselves, we render → critique → re-render until the result is pixel-perfect.
+# ml-content
 
-This skill compresses methodology developed across published ML carousels + videos + a full reverse-engineering of the github.com/3b1b/videos repo (Grant Sanderson's actual production code) and his explanation psychology. It treats ML content as applied research communication, not graphic design with science vocabulary on top.
+Generate ML explainer content that looks like 3Blue1Brown, not like AI slop.
 
----
+> ## ⚠️ PRIME DIRECTIVE — treat every video as nuclear. ZERO errors ship.
+> The content goes public to an audience that **will** fact-check it. A single wrong number, mislabeled quantity, or overstated claim destroys trust in everything else and gets screenshotted. So: **nothing — not even slightly — may be wrong.** Every spoken line, every on-screen number and label, every caption, and the thumbnail must be **verified against the primary source before it is rendered, and audited again on the rendered video before it ships** (§10, the non-negotiable gate). If you cannot cite the exact source line for a claim, you do not say it, write it, or put it on screen. Soften it or cut it. **No "dramatic license" on numbers.** When in doubt, it is wrong until proven right.
 
-## Workflow Decision Tree
+This skill was rebuilt from a full read of **Grant Sanderson's actual production code** (`github.com/3b1b/videos`, 503K LOC, 2015→2026) and **the real manimGL engine** (`github.com/3b1b/manim`). Every rule below is grounded in that source with `file:line` citations. Where this skill once guessed, it now measures.
 
-```
-User has...                              → Start at...
-────────────────────────────────────────────────────────────
-Topic / paper, no plan                   → Stage 0 (AHA) → full pipeline
-A 5-file recon bundle                    → Stage 1 (Audit) → Build → Critique
-A finished design-spec                   → Stage 3 (Build) → Critique
-A finished video / carousel              → Stage 5 (Grounding pass)
-Edits on a posted piece                  → Grounding pass + correction comment
-```
-
-Always ask what they have and what they need. Don't assume full pipeline.
+**The video engine is manimGL** (the 3b1b version), driven by `manimgl`. Manim Community Edition (CE) is a *different library with a different, incompatible API* — code written for one crashes on the other. Static IG carousels use HTML/matplotlib (see the Carousel section); everything animated is manimGL.
 
 ---
 
-## The Five Locks (non-negotiable)
+## 0. Why the old output was slop (read this once)
 
-Skip any one of these and the output devolves into AI slop.
+The previous version of this skill produced overlapping elements, weak animation, no consistency, and infographic-feeling stills. The root causes, now fixed:
 
-**1. AHA lock** — every project starts with a pre-built AHA moment. The single shift-in-perspective the viewer will leave with. If you can't articulate it in one sentence, **do not start the project**. Grant: *"You shouldn't start the project unless there's one of those Aha moments and you have a big bag of Aha moments already that you could just pull at."*
+1. **It shipped Manim CE code while preaching manimGL.** The old template used `from manim import *`, `MathTex`, `ThreeDScene`, `set_camera_orientation`, `set_fill_by_value`, `Create`, `begin_ambient_camera_rotation` — **none of which exist in manimGL** (`grep` over the entire engine = 0 hits). It would not even run.
+2. **100% of real output was actually built in matplotlib**, hand-placing ~57 text calls + ~20 boxes per scene with absolute coordinates. That is the worst possible tool for animation: no relative layout, no transform system, no camera. Overlap is guaranteed.
+3. **It treated overlap as a validation problem** (bbox asserts, frame validators, ffmpeg caption-pads) instead of a *construction* problem. 3b1b never validates overlap — it makes overlap structurally impossible by building self-arranging objects.
+4. **It treated motion as decoration.** Elements faded in from nowhere as disconnected islands. In real 3b1b, objects are *born from the thing they abstract* (`TransformFromCopy`), so every motion teaches.
+5. **Planning was marketing copy with word-count targets.** Real 3b1b planning is an ordered list of named teaching beats that reads top-to-bottom as the narration.
 
-**2. Grounding lock** — every claim verifiable against a primary source. Run the grounding pass (Stage 5) before posting. CONFIRMED / WRONG / UNVERIFIED per claim. **Date-drift catches** — for any recent ML release, re-verify within the week of publication (model versions and prices change weekly).
-
-**3. Structural separation lock** — caption strip, chrome, and content live in **physically distinct pixel zones of the final frame**. NOT enforced by code discipline (it always breaks). Enforced by geometry: Manim renders into a smaller canvas, ffmpeg pads the remainder with a dedicated caption strip the camera cannot address. See "The Five-Layer Defense" below. Burned-in captions sharing a canvas with content WILL eventually collide — make it geometrically impossible.
-
-**4. 3D lock** — real geometry only. No faux-3D parallelogram-on-rect. 3D is earned only when the math is genuinely a 3-axis quantity. Decide which scenes earn 3D before any rendering. Two-to-three hero 3D moments per video, max.
-
-**5. Differentiation lock** — each piece earns its own visual fingerprint. Same brand baseline, different aesthetic per project. Reuse the same fingerprint twice = the audience sees a template.
+The fix is a different mental model, encoded as the Six Laws below.
 
 ---
 
-## Stage 0 — AHA Discovery (Worldbuilder pass before anything)
-
-Before writing a single recon file, answer these on paper:
-
-### 0.1 — The AHA sentence
-
-In one sentence, **what is the shift in perspective the viewer leaves with**?
-
-Bad: *"DeepSeek V4 is cheap."*
-Better: *"DeepSeek V4 is cheap because it stores the past at two different resolutions across the layers, and the model learns which resolution each layer needs."*
-
-If the AHA is just a fact, not a shift, **stop**. Find the shift or pick a different paper.
-
-### 0.2 — The crime scene (the hook)
-
-What's the *concrete*, *weird*, *surprising* thing on screen at second 0?
-
-Grant: *"In math especially, topic definitions should not be seen as a starting point, but an ending point."*
-
-For ML content this means: open with the behavior the architecture explains, not the architecture. Open with the price gap, not the MoE diagram. Open with the cube of memory, not the formula.
-
-### 0.3 — The audience model
-
-Specific persona, not demographic. Worldbuilder discipline — see the writing layer below.
-
-- What atomic units do they already nod at?
-- What can break their head (in a good way)?
-- What will they reflexively reject?
-
-### 0.4 — The single leverage point
-
-One sentence. The flawed premise to dismantle, or the new mental model to install.
-
-If you can't write the leverage point in 25 words, you don't have one yet.
-
-### 0.5 — The five rules from Grant himself (always apply)
-
-1. **Never start without a pre-built AHA.** Project doesn't begin until you have it.
-2. **Open with a crime scene, not a definition.** Mystery-novel framing. Concrete, weird, surprising.
-3. **Intuition first; formalism as relief.** The equation arrives when the viewer already wants it.
-4. **Every animation reinforces narration, never competes with it.** Cut anything that's motion-for-motion's-sake.
-5. **Trust the niche. Trust the viewer.** Go deeper than feels safe. The audience reward is real.
-
-These five are the worldbuilder lens for ML video content. Bake them into the recon bundle.
-
----
-
-## Stage 1 — Recon (the 5-file bundle)
-
-For each ML paper or topic, produce these five files in a project subfolder before any design begins. They are not interchangeable.
-
-### File 1 — `paper-summary.md`
-
-Audience: future-you reviewing what you actually understood.
-
-Structure: title + arXiv ID + authors, NOTE on uncertainty (DIRECT / INFERRED / UNCERTAIN per claim), the thing being studied, problem framing (math verbatim where possible), method (Stage 1, Stage 2, theorem/guarantee), numbers that matter (headline / supporting / pragmatism), lineage (predecessors, foundational, adjacent), limitations from the paper's own limitations section, why this paper is interesting now, hook angles already in tension.
-
-Length: 1500–3000 words.
-
-### File 2 — `related-work.md`
-
-Audience: a domain expert who wants to know how this paper sits in the field.
-
-Structure: ASCII tree of lineage threads, predecessor table with one-sentence deltas, competitor table, adjacent context, what the paper contributes that wasn't already there (ranked), what it does NOT contribute and why that matters, counter-arguments worth pre-empting.
-
-Length: 1500–2500 words.
-
-### File 3 — `discussions.md`
-
-Audience: someone calibrating the social-media reception.
-
-Structure: macro-frame ("one-sentence consensus"), 3+ camps in the conversation (atomic units + predicted reaction), specific surfaces to cite or push against, prediction of which hook will the conversation latch onto, things NOT yet in the public conversation.
-
-Length: 1000–2000 words.
-
-### File 4 — `brainstorm.md`
-
-Audience: future-you writing copy. This file decides everything that comes next.
-
-Structure: worldbuilder audience pass, **the AHA sentence (locked from Stage 0)**, hook tier-list (10+ hooks across 5 tiers), final hook pick with reasoning, slide arc / scene arc / poster layout, caption draft (separate writing surface), what this content uniquely contributes vs prior content.
-
-Length: 1500–2500 words.
-
-### File 5 — `README.md`
-
-Audience: future-you returning six months later, or a collaborator joining mid-project.
-
-Structure: file index, recommended hook, top viral surfaces predicted, why this project matters in the series, status checklist, open uncertainties.
-
-Length: 500–1000 words.
-
-### Recon discipline
-
-- **Always flag uncertainty.** "DIRECT", "INFERRED", "UNCERTAIN". Reusable for grounding pass.
-- **Citation counts always approximate.** Scholar fluctuates. Never claim "348 citations" — say "widely cited."
-- **Avoid generic adjectives.** "Innovative" / "groundbreaking" / "exciting" mean nothing.
-- **Numbered + bulleted lists** beat prose in working docs.
-
-### Exhaustive multi-pass internet recon (mandatory for recent papers)
-
-For any paper or model from the last 6 months, do **two scrape passes**:
-
-**Pass 1 — primary sources:** the paper PDF, the model card on HuggingFace, the authors' announcement post.
-
-**Pass 2 — secondary verification:** at least two independent writeups from technical press (MarkTechPost, Sebastian Raschka's substack, Latent Space, AI Papers Academy, etc.), plus pricing/benchmark verification from at least two distinct hosting providers if applicable (HuggingFace, OpenRouter, DeepInfra, Together AI).
-
-**Use BrightData (bd) tools when available** (`mcp__bd__scrape_as_markdown`, `mcp__bd__scrape_batch`, `mcp__bd__search_engine`). They bypass paywalls and rate-limits. Fall back to `mcp__workspace__web_fetch` and `WebSearch` only when bd is unavailable or returns insufficient content.
-
-For technical claims that require code-level confirmation (specific values of hyperparameters, layer interleave ratios, etc.), fetch the actual technical-report PDF and grep. If a value isn't in any public source, **do not invent it** — the recon bundle flags it UNVERIFIED and the VO + visuals avoid quoting it.
-
----
-
-## Stage 2 — Audit + Moodboard
-
-### `3d-audit.md` — when 3D is earned
-
-For every scene / panel, ask: *Does the math underneath have a third dimension that 3D would expose?*
-
-Three verdicts: **YES — PRIME** (hero 3D moment, render it real), **PARTIAL — small inset** (data has 3 dims but the scene hero is something else), **NO** (flat data, don't 3D it).
-
-Aim for 2-3 hero 3D moments per video. More and 3D loses its "look here" power.
-
-| Math that wants 3D | Math that does NOT want 3D |
-|---|---|
-| `f(x, y) = z` surface | Time series → 2D line |
-| 3D-axis cube (KV cache, embeddings) | Bar chart over one category |
-| Volumetric tensor | Pipeline / flowchart |
-| Two surfaces compared | Tree / dendrogram |
-| Step / piecewise over 2D domain | Citation count comparison |
-| Stacked translucent slabs | Benchmark leaderboard |
-
-### `moodboard.md` — mining design references
-
-Phases:
-- **Phase 0** — locate the audience's visual world (Distill.pub, Anthropic Circuits, NVIDIA blog).
-- **Phase 1** — survey 10–12 aesthetic ideologies, score on audience match + differentiation + phone-readability + 3D compatibility.
-- **Phase 2** — mine 30+ references across 5–6 buckets (canonical, production analogs, contemporary writing, 3D/animation, foundational, adjacent). Each reference gets URL + one-sentence note on what to steal.
-- **Phase 3** — synthesize 8–10 cross-cutting patterns.
-- **Phase 4** — lock the direction in one paragraph.
-- **Phase 5** — list 3–5 risks with mitigations.
-- **Phase 6** — declare what to inherit and refuse from prior content.
-
----
-
-## Stage 3 — Design Spec Lock
-
-Write `design-spec.md` translating the locked direction into concrete tokens, type ramp, scene-by-scene layout. Lock before any code begins.
-
-Standard structure: direction (one sentence), color tokens (CSS variables), typography stack, type ramp for 1920×1080, **safe-zone grid** (see below), chrome (top + bottom), per-scene spec, asset checklist, risks restated, greenlight criteria.
-
-### The safe-zone grid (locked across all video output)
-
-A 1920×1080 frame is divided into fixed reserved zones. **In-scene content lives only inside the content zone. Captions live only in the caption zone. Chrome lives only in the chrome zone.** Violating any of these zones is a pixel-perfect-lock failure.
-
-```
-y=0     ────────────────────────────────────────────────────────
-        │                                                      │
-y=80    │  ─── TOP CHROME ZONE ──── (chrome only) ───────────  │
-        │                                                      │
-y=120   │                                                      │
-        │             SAFE CONTENT ZONE                        │
-        │             (1920 × 700 working area)                │
-        │                                                      │
-y=820   │                                                      │
-        │  ─── BOTTOM CHROME ZONE ─── (chrome only) ─────────  │
-y=900   │                                                      │
-        │      ─── CAPTION ZONE ─── (burned captions only) ─   │
-y=1080  ────────────────────────────────────────────────────────
+## 1. The engine reality (the single most important section)
+
+**Start every manim file with:**
+```python
+from manim_imports_ext import *      # in the 3b1b/videos repo
+# or, standalone:  from manimlib import *
 ```
 
-In numbers:
-- Top chrome strip: y = 30 → 80 (paper title left, paper number right)
-- Safe content zone: y = 120 → 820 (this is where everything happens)
-- Bottom chrome strip: y = 1020 → 1070 (brand left, scene dots right)
-- Caption zone: y = 920 → 1010 (burned subtitle, MarginV = 80)
+**Scene base class is `InteractiveScene`** (`interactive_scene.py:66`) — for 2D *and* 3D. In the entire 2025 corpus: `InteractiveScene` subclassed 385 times, `ThreeDScene` (`scene.py:930`) 0 times — it exists but 3b1b never uses it. 3D is achieved on an `InteractiveScene` by moving `self.frame`.
 
-The 100px buffer between content (y ≤ 820) and caption (y ≥ 920) is the **anti-collision buffer**. It is sacred.
+**The camera is `self.frame`** (a `CameraFrame` mobject; `scene.py:112`). Local alias `frame = self.frame` appears 114× in 2025 code. `self.camera.frame` appears 0×.
 
----
-
-## Stage 4 — Build
-
-Two pipelines: **Manim (default)** and **matplotlib (fallback)**. Pick the right one for the environment.
-
-### Pipeline selection
-
-**Default = Manim Community Edition.** Use Manim when:
-- The environment has Python 3.10+, FFmpeg, LaTeX (TeX Live or MacTeX), and Cairo+Pango.
-- The user has not explicitly requested matplotlib.
-- Math morphs, real 3D, equation transforms, or 3B1B-grammar idioms are required.
-
-**Fallback = matplotlib.** Use matplotlib only when:
-- The environment can't install Manim/LaTeX (sandboxed runner, restricted box).
-- The user explicitly asks for matplotlib ("I don't want to install LaTeX," "use the matplotlib approach").
-- Static carousel (10 PNGs for IG carousel), not video — matplotlib is actually the better tool here.
-
-When Manim *could* be used but the user insists on matplotlib, **note this in the design-spec and ship matplotlib with the pixel-perfect iteration loop discipline below**.
-
-### Manim pipeline (default — for video)
-
-**Folder structure:**
-```
-project/
-├── (full recon bundle)
-├── 3d-audit.md
-├── moodboard.md
-├── design-spec.md
-├── script.md                  # voice-over script + scene breakdown
-├── audio/
-│   └── vo.mp3                 # ElevenLabs render, -16 LUFS
-├── manim/
-│   ├── manim_scenes.py        # Scene subclasses, one per beat
-│   ├── INSTALL.sh             # one-shot env setup
-│   ├── RENDER.sh              # render all + concat + mux + caption burn
-│   └── media/                 # Manim output (gitignore)
-├── captions.ass               # libass, hand-authored + whisper timing
-└── output/
-    └── final.mp4              # deliverable
+**Render / iterate:**
+```bash
+manimgl file.py SceneName              # render
+manimgl file.py SceneName -se 120      # drop into IPython at line 120 (the dev loop)
+manimgl file.py SceneName -w           # write to file
+# inside the embed: checkpoint_paste() runs clipboard code with checkpoint rewind
 ```
 
-**Manim style guide (from Grant's own CLAUDE.md + observed grammar):**
+### CE landmines — Table A: these genuinely CRASH on manimGL (absent symbols)
 
-- Use `Tex(r"…")` not `MathTex(...)` for inline math. Raw strings always for LaTeX.
-- Substring color via `tex_to_color_map={"sym": COLOR}` (legacy) or substring indexing `equation["sym"][0].set_color(COLOR)` (modern).
-- Per-character color assignments via zip: `for part, vect in zip([em, ew, ek, eq], word_vects): part.set_fill(vect.get_color())`.
-- Construct `VGroup` declaratively: `VGroup(*[Mob() for _ in range(N)])`. Reserve `.add()` for cases with non-trivial side effects per iteration.
-- Arrange via `.arrange(RIGHT, buff=...)`, `.next_to(...)`, `.to_corner(...)`, `.to_edge(...)`. Don't compute coordinates manually unless required.
-- Color gradients via `color_gradient(colors, n)`, not hand-rolled `interpolate_color` loops.
-- **Do not include indentation spaces on blank lines.**
-
-**Manim animation grammar (extracted from 3b1b/videos repo across 4 iconic scene files):**
-
-| Bedrock idiom | Frequency | Notes |
+| You must NOT emit (CE) | Use instead (manimGL) | Evidence |
 |---|---|---|
-| `self.play(...) / self.wait()` cadence | 200+ plays + ~150 waits per file | The metronome. `self.wait()` default = 1s. |
-| `run_time=2` as default animation length | Modal value across all files | Faster (`=1`, `=0.5`) for micro, slower (`=3-5`) for reveals, `=10-30` for meditative sweeps. |
-| `LaggedStartMap(FadeIn, things, shift=0.5*DOWN/UP, lag_ratio=0.05–0.25)` | Heavy in all files | Standard ensemble entrance. |
-| `ReplacementTransform(old, new)` / `TransformFromCopy(src, dest)` | Math morph workhorse | Grant does NOT use `TransformMatchingTex` in production. Explicit mobject-to-mobject. |
-| Section comments as script structure | Every monolithic `construct()` | `# Show embeddings`, `# Move question`. Reads as a teleprompter outline. |
-| Color minimalism + role consistency | ~5-8 colors per file, stable roles | YELLOW always = highlight/active; GREY_B = de-emphasis. |
-| Math equation pieces coloured per substring | Universal | Letters colored to match the geometric object they describe. |
-| Custom domain Mobject DSLs | One per video | `NumericEmbedding`, `Dial`, `WeightMatrix`, `ContextAnimation`. Tiny vocabulary per project. |
-| No voiceover markers in code | Universal | VO recorded separately against section beats. |
-| Aha moment staged with longer run_time + camera/layout shift + long wait afterward | Universal | Setup scenes are multi-anim plays at default; reveal scenes are one focused play at `run_time=5-10` then long wait. |
+| `from manim import *` | `from manim_imports_ext import *` / `from manimlib import *` | CLAUDE.md:59 (loads the wrong library) |
+| `MathTex(...)` | `Tex(...)` | grep MathTex over repo = 0; CLAUDE.md:82 |
+| `self.set_camera_orientation(phi=,theta=,zoom=)` | `self.frame.reorient(theta, phi, gamma, center, height)` | absent; `camera_frame.py:172` |
+| `self.move_camera(...)` | `self.play(self.frame.animate.reorient(...))` | absent |
+| `self.begin_ambient_camera_rotation()` | `self.frame.add_ambient_rotation(1 * DEG)` | absent; `camera_frame.py:212` |
+| `self.add_fixed_in_frame_mobjects(m)` | `m.fix_in_frame()` | absent (no scene-level helper) |
+| `Create(m)` | `ShowCreation(m)` | absent; `creation.py:48` |
+| `Unwrite(m)` | `Uncreate(m)` or `FadeOut(m)` | absent |
+| `surface.set_fill_by_value(...)` | `surface.set_color(c, opacity)` / `set_color_by_xyz_func(...)` | absent |
+| `Circumscribe(m)` | `FlashAround(m)` | absent in engine (the one truly-missing indicator) |
+| `Wiggle(m)` (class) | `WiggleOutThenIn(m)` or `rate_func=wiggle` | no `Wiggle` class; `indication.py:355` |
+| `ease_in_out_*`, `smoothstep`, `easeOutCubic` | the 15 real rate funcs (§7) | not in `rate_functions.py` |
+| `FadeInFrom`, `FadeOutAndShift`, `SpinInFromNothing`, `AddTextLetterByLetter` | `FadeIn(m, shift=, scale=)`, `AddTextWordByWord` | absent |
 
-**Manim 2024 grammar (the modern style — use this):**
-- `class S0X(InteractiveScene):` (not `Scene` / `ThreeDScene` — `InteractiveScene` is his 2024 base).
-- Monolithic `construct()` with `# Section name` comments every 20-80 lines.
-- `.animate.X(args).set_anim_args(run_time=N)` chains for in-place animation.
-- 3D via `self.frame.animate.reorient(theta, phi, gamma, center, height)`. `run_time=5–12` for reorients.
-- `self.frame.add_ambient_rotation(1 * DEGREES)` for subtle constant drift during long holds.
-- `.always.set_perpendicular_to_camera(self.frame)` for labels that face the camera in 3D.
-- Reusable factory functions: `get_*`, `make_*`, `show_*` — domain DSL per video.
-
-### Audio sync — `manim-voiceover` with ElevenLabs (the auto-sync path)
-
-The naive approach (render one big VO mp3, hand-time scenes to whisper alignment) drifts: any TTS pacing variance, any scene edit, and visuals desync silently. The right approach is per-line voiceover bound to each animation block:
-
-```python
-from manim_voiceover import VoiceoverScene
-from manim_voiceover.services.elevenlabs import ElevenLabsService
-
-class S05_CSA(VoiceoverScene):
-    def construct(self):
-        self.set_speech_service(ElevenLabsService(
-            voice_id="YOUR_VOICE_ID",
-            model="eleven_multilingual_v2",
-            voice_settings={...},
-            transcription_model=None,    # skip whisper alignment (heavy)
-        ))
-
-        # build mobjects...
-
-        with self.voiceover(text="Picture the attention matrix.") as t:
-            self.play(FadeIn(matrix), run_time=t.duration)
-        with self.voiceover(text="Compression collapses every m columns.") as t:
-            self.play(ReplacementTransform(mat, comp_mat), run_time=t.duration)
+**Self-check (must return nothing):**
+```
+grep -nE 'MathTex|from manim import \*|set_camera_orientation|begin_ambient_camera_rotation|move_camera|add_fixed_in_frame_mobjects|set_fill_by_value|\bCreate\(|\bCircumscribe\b|\bWiggle\(|\bUnwrite\(|FadeInFrom|SpinInFromNothing|AddTextLetterByLetter' your_file.py
 ```
 
-`t.duration` is the actual generated audio length. Animation `run_time` is bound to it — visuals and voice stay in sync by construction. Each line cached to `media/voiceovers/` after first generation (zero API cost on subsequent runs).
+### Table B: these RUN on manimGL but are wrong/stale style — don't emit anyway
 
-### Gotchas observed in the field (every one of these cost ~30 min of debugging)
-
-| Symptom | Real cause | Fix |
+| Avoid (valid but off-style) | Prefer | Why |
 |---|---|---|
-| `Error: No such option '--subcaptions'` | The CLI flag doesn't exist in Manim CE 0.19. Plugin auto-emits SRT when `create_subcaption=True` (default). | Just remove `--subcaptions` from your manim CLI. |
-| `AuthorizationError` from ElevenLabs SDK | SDK env-var pickup is unreliable across versions. v0.x wants `ELEVEN_API_KEY`, v1.x wants `ELEVENLABS_API_KEY`. | Export both. Plus call `elevenlabs.set_api_key(...)` explicitly in Python before instantiating the service. |
-| `APIError: missing voices_read permission` | `ElevenLabsService.__init__()` calls `voices()` to validate `voice_id`, requiring the `voices_read` scope. Many keys lack it. | Either regenerate the key with `voices_read`, OR monkey-patch `voices()` to return a stub list containing only your target `voice_id`. The actual TTS `generate()` call only needs `voice_id`. |
-| `Missing packages. Run pip install manim-voiceover[transcribe]` then `openai-whisper` install fails on `pkg_resources` | `ElevenLabsService` defaults `transcription_model="base"` (overrides `SpeechService` default of `None`), triggering whisper extras. | Pass `transcription_model=None` to the service. No transcription needed if you don't use per-word bookmarks. |
-| MRO error for 3D + Voiceover | Multiple inheritance order matters. | Try `class S(VoiceoverScene, ThreeDScene)` first; if it errors, swap to `(ThreeDScene, VoiceoverScene)`. |
-| Captions never appear in final mp4 | `subtitles=...` filter needs the SRT path resolved correctly. | Use absolute path in the ffmpeg filter; set `fontsdir=` to your system font path so libass finds Inter Tight. |
+| `class S(Scene)` / `class S(ThreeDScene)` | `class S(InteractiveScene)` | both exist & run, but 2025 corpus is 385× InteractiveScene, 0× ThreeDScene; 3D uses `self.frame` |
+| `TransformMatchingTex(a, b)` | `TransformMatchingStrings(a, b)` | `TransformMatchingTex` exists (subclasses Strings) but 3b1b uses Strings |
+| `eq.set_color_by_tex(tok, c)` | `Tex(R"...", t2c={tok: c})` or inline `eq[tok].set_color(c)` | `set_color_by_tex` is a real Tex method (`tex_mobject.py:207`) but ~unused; inline `set_color` dominates |
+| `Indicate(m)` / `CircleIndicate(m)` | `FlashAround(m)` / `Flash` / `FlashUnder` | both exist & are used (`indication.py:73,142`); modern corpus just reaches for Flash* far more |
+| `DEGREES` | `DEG` | `DEGREES` is a live alias of `DEG` (won't crash); 2025 uses `DEG` ~520× vs `DEGREES` 3× |
 
-### The interactive loop (when developing on your own machine)
-
-Grant codes via the `manimgl <file> <Scene> -se <line>` interactive mode plus `checkpoint_paste()`. Sub-second iteration. If you're writing scenes on your local machine, install this workflow:
-
-```bash
-manimgl <file> <SceneName> -se <line>     # drop into IPython at a checkpoint
-# in IPython, paste a block of animation code starting with a `# label` comment
-checkpoint_paste()                          # runs the block; first sight of `# label` saves state
-# edit code, re-paste — automatic rewind to the `# label` checkpoint
-checkpoint_paste(skip=True)                 # zero-runtime scrub (no animation)
-checkpoint_paste(record=True)               # writes the block to disk
-```
-
-When iterating, comments-as-checkpoints lets you treat the scene like a DAW timeline. Edit a paragraph, paste, watch, repeat.
-
-**The render-critique-render loop (when we render ourselves):**
-
-When the environment supports Manim and we're rendering, treat it as a discipline:
-
-1. **Initial render** — `bash RENDER.sh all` (or render single scene with `manim -qm`).
-2. **Critique pass** — sample 5–10 key frames via `ffmpeg -ss T -frames:v 1`. Read each frame. List every overlap, every margin-violation, every visual ambiguity.
-3. **Patch** — edit the scene code to fix what's broken.
-4. **Re-render only affected scenes** — Manim caches partial movie files, so only the changed `self.play(...)` re-renders.
-5. **Re-critique.**
-6. **Loop until critique returns clean.**
-
-Acceptable number of critique-render cycles per video: **3–8**. Anything less and you've left bugs; anything more and you're over-engineering.
-
-### Matplotlib pipeline (fallback — when user insists)
-
-When Manim isn't available or the user wants matplotlib, follow the legacy carousel/video pipeline. Output: 1920×1080 PNGs per frame, stitched via FFmpeg, audio muxed in post.
-
-**Folder structure:**
-```
-project/
-├── (full recon bundle)
-├── design-spec.md
-├── render.py             # matplotlib + numpy + Pillow, hand-rolled scene functions
-├── audio/vo.mp3
-├── captions.ass
-├── frames/               # per-frame PNGs (often 1000s of files)
-├── output/final.mp4
-└── critique/             # spot-check frame screenshots
-```
-
-#### The pixel-perfect matplotlib iteration loop (MANDATORY)
-
-The matplotlib pipeline is more fragile than Manim because every element is hand-positioned. Without aggressive iteration discipline, scenes ship with caption-vs-element overlaps, off-screen text, misaligned chips. **This must not happen.**
-
-For every scene in a matplotlib video:
-
-**Phase 1 — Probe (after first writeup of render.py)**
-
-Render one frame per scene at mid-scene timepoints via `--probe` mode:
-
-```python
-if args[0] == "--probe":
-    for i, (name, s, e) in enumerate(SCENES):
-        mid = (s + e) / 2
-        render_frame(int(mid * FPS), out_dir="preview")
-```
-
-Read every preview frame with the Read tool. For each frame, walk this checklist:
-
-- [ ] **Caption zone clear?** All in-scene text bottom-edges are at y ≤ 820. No element appears below y = 900 except chrome.
-- [ ] **Chrome zone clear?** No content overlaps the top chrome strip (y ≤ 80) or bottom strip (y ≥ 1020).
-- [ ] **Element-vs-element collisions?** Pills, text labels, math equations, panels — every bounding box is non-overlapping with every other.
-- [ ] **Text fits inside containers?** Numbers inside chips, labels inside boxes, math inside panels — nothing spills out.
-- [ ] **Color contract?** Every element uses the role-color from the design-spec. No surprise hues.
-- [ ] **Margins consistent?** Same padding around similar elements across scenes.
-- [ ] **Anti-collision buffer respected?** The 100px gap between content (y=820) and captions (y=920) is intact.
-
-For every checkbox that fails, **note the exact fix needed** (move element, resize, change color, etc).
-
-**Phase 2 — Patch**
-
-Edit render.py per the critique list. Re-probe. Re-read frames. Iterate until all checkboxes pass.
-
-Typical iteration count for a 9-scene video: **3–8 probe-patch cycles**.
-
-**Phase 3 — Late-scene + early-scene check**
-
-Probe at scene_t = 0.5s (just after fade-in) AND scene_t = scene_dur - 0.5s (just before fade-out) for every scene. These are the edge frames most likely to have:
-- Elements still mid-animation overlapping
-- Elements not yet faded in but blocking
-- Elements that overshoot their dwell time
-
-**Phase 4 — Full render**
-
-Only when all probe frames pass: render all frames, mux audio, burn captions.
-
-**Phase 5 — Post-mux spot check**
-
-Sample 8–12 captioned timestamps from the final mp4 via `ffmpeg -ss T -frames:v 1`. Read each. Verify:
-
-- Captions appear at the right time (anchor words land at the right scene)
-- Captions don't overlap in-scene hero text
-- Captions don't overrun the bottom of the frame
-
-If any frame fails, return to Phase 1.
-
-**Don't ship until critique returns clean.** This is non-negotiable.
-
-#### Matplotlib pacing discipline
-
-The 3b1b "metronome" — `self.play(...)` + `self.wait()` — has a direct matplotlib analog:
-
-- **Animate** an element over a defined duration (e.g., `fadein(t, dur=0.5, delay=delay)`).
-- **Hold** after the animation completes — at least 0.3s of no change before the next element appears.
-- **Default animation duration:** ~0.4-0.6s. **Default hold:** 0.5-1.0s.
-- **Reveal animation duration:** 0.8-1.5s. **Reveal hold:** 1.5-3.0s.
-
-Pacing too tight = "AI slop frenetic." Pacing too loose = "viewer scrolls away." 0.5s animate + 0.6s hold is the safe default.
-
-#### Matplotlib pixel measurement helpers
-
-For text width estimation (since `text.get_window_extent()` requires a rendered figure), use these conservative rules:
-
-```python
-# Inter Tight at weight 600
-char_w_inter_bold  = fontsize * 0.62
-# Inter Tight at weight 400
-char_w_inter_book  = fontsize * 0.55
-# JetBrains Mono
-char_w_mono        = fontsize * 0.60
-# CMU Serif italic
-char_w_cmu_italic  = fontsize * 0.50
-
-def text_width(text, fontsize, font="inter_bold"):
-    cw = {"inter_bold": 0.62, "inter_book": 0.55,
-          "mono": 0.60, "cmu_italic": 0.50}[font]
-    return len(text) * fontsize * cw
-```
-
-For pills and rounded boxes around text, use a 24px horizontal pad + 20% vertical pad:
-
-```python
-pill_w = text_width(label, fontsize) + 48
-pill_h = fontsize * 1.95
-```
-
-These are the values that survived 5+ iteration cycles. Don't shrink them.
+> The split matters: don't let a self-check grep reject valid 3b1b code. `Indicate`, `TransformMatchingTex`, `set_color_by_tex`, and `DEGREES` are *style* calls, not crashers — only Table A NameErrors.
 
 ---
 
-## Stage 5 — Grounding Pass
+## 2. The mental model (what makes it 3b1b, not slop)
 
-Mandatory before shipping. The audit takes 30 minutes; correcting after posting takes a week.
+> You are not laying out a frame. You are building a **small cast of self-arranging objects** and **transforming them through a sequence of beats** where each motion is the explanation.
 
-### What counts as a claim
+Two layers, every video:
 
-Anything one of your readers could check on Google:
-- Paper titles, author names, affiliations
-- arXiv IDs
-- Citation counts (always soften — never quote hard numbers)
-- Performance numbers (accuracies, F1, speedups, percentages)
-- Conference venues (ICML 2024, NeurIPS 2025, ICLR 2026)
-- Release / announcement dates
-- Lab names
-- Model identifiers (DeepSeek-V4-Pro, Claude Opus 4.8, GPT-5.5)
-- Specific quotes
-- Specific (layer, expert) coordinates in mech interp
-- Specific table cells in benchmark results
-- Statements like "first paper to do X"
+1. **`helpers.py` — the domain DSL.** 4–10 `Mobject` subclasses that build and arrange *themselves* (`WeightMatrix`, `NumericEmbedding`, `EmbeddingArray`, `Dial`, `NeuralNetwork`, `ContextAnimation` — `_2024/transformers/helpers.py`), plus 2–5 `show_*(scene, ...)` choreography verbs. **Define the cast before writing a single `construct()`.**
+2. **Scene files** — thin `InteractiveScene` subclasses whose `construct()` is a flat list of `# Beat name` comments, each assembling DSL objects and animating them.
 
-### Date-drift watch (heightened priority for recent releases)
-
-Model versions, benchmark scores, and prices change weekly in 2026+. If your content references any of these:
-
-- **Re-verify within 48 hours of publishing**, not at recon time.
-- **Anchor every comparison to a specific version**: "Claude Opus 4.6" not "Claude Opus". When 4.8 ships, the un-anchored claim becomes wrong overnight.
-- **Note the snapshot date on screen** for pricing visuals.
-- **Run a subagent grounding pass** the morning of publication, not the morning of recording.
-
-### How to grade specifics
-
-Decimal precision past what the source provides reads fabricated. If the abstract says ">91%", you write ">91%" — not "92.3%".
-
-### Workflow
-
-1. **Extract** every claim from script + visuals + captions + IG copy into a table.
-2. **Search** each via WebSearch / bd / web_fetch.
-3. **Grade** CONFIRMED / WRONG / UNVERIFIED + URL.
-4. **Fix** WRONG. **Soften** UNVERIFIED.
-5. **Re-render** any scenes touched.
-
-For 10+ claims, delegate to a subagent:
-
-```
-FULL GROUNDING AUDIT — [project name].
-
-Read [script.md path] and [ig-caption.md path]. Extract every checkable
-factual claim into a table. Web-search each. Verdict: CONFIRMED /
-UNVERIFIED / WRONG. For WRONG, supply current text → correction → URL.
-For UNVERIFIED, supply what you searched and why ambiguous.
-
-Anchor truths:
-- Today's date is [DATE]
-- arXiv ID format YYMM.NNNNN
-- For ML releases from past 6 months: re-verify against the model card
-  AND a second independent technical writeup AND current pricing on
-  at least two providers.
-
-Report format:
-- CONFIRMED CLAIMS (one bullet each, with URL)
-- WRONG CLAIMS (current text → correction → URL)
-- UNVERIFIED (claim, what you searched)
-- SUMMARY: how many CONFIRMED / WRONG / UNVERIFIED + ship/no-ship rec
-- RECOMMENDED EDITS: literal text changes
-
-Hard limit: 1500 words.
-```
+Everything below serves this model.
 
 ---
 
-## The Five-Layer Defense for Pixel-Perfect Animated Video
+## 3. The Six Laws (non-negotiable)
 
-Five iterations of "fix the overlaps" eventually proved that absolute-coordinate placement + burned-in captions on the same canvas is a structural failure mode, not a discipline failure mode. The Five-Layer Defense fixes this at five compounding levels — each catches what the layer below missed.
+### Law 1 — Relative layout only. Overlap is structural, not policed.
 
-### Why this exists (the failure pattern in plain English)
+Real 3b1b layout is overwhelmingly relative: `next_to` used ~10,500×, `arrange` ~2,460× across the repo, versus only a handful of absolute `move_to([x,y,z])` content placements — and nearly all of those absolutes are the *camera*, never content. **Forbid absolute content coordinates.** `move_to([x,y,z])` and `frame.animate.move_to(...)` are for the camera/light source only.
 
-We kept shipping videos where:
-- Captions overlapped in-scene text (caption fonts spill above their reserved zone)
-- Top chrome ("PAPER · 01") overlapped scene titles
-- Hero numbers collided with stat strips
-- Arrows arrived at the same time as labels and stacked on each other
-
-Every time, the diagnosis was "I set the y coordinate wrong" and the fix was "I'll move it by 0.3 units." Then the next render exposed a different overlap and we repeated. This isn't a personal failure — it's the predictable result of:
-
-1. **Hand-placed absolute coordinates drift** when font metrics, text length, or canvas dims change.
-2. **Burned-in captions share the canvas with content**, so the caption renderer (libass) and the scene renderer (Manim) both write into the same pixel rows. The system has no way to coordinate.
-
-The fix: stop trying to coordinate. Make collision geometrically impossible.
-
-### Layer 1 — Zone reservation (the structural fix)
-
-**Reserve the bottom band of the frame for captions. Place no in-scene mobjects there. Enforce by code, asserts, and post-render validator.**
-
-There are two valid implementations of this:
-
-**Strategy A (geometric, attempted in passes 4-5):** render Manim at a smaller canvas (e.g. 1920×940), ffmpeg-pad the remainder with bg color, captions burn into the pad. The advantage is "the camera physically cannot address the caption zone." The disadvantage: Manim's quality presets (`-qh`, `-qm`, `-qk`) and various other CLI/config plumbing keep overriding the smaller `config.pixel_height`. We spent two passes fighting this and never got it to land reliably. **Don't recommend.**
-
-**Strategy B (code-enforced zones, what we ship):** render at native 1920×1080. Reserve y_pixel bands by convention, enforce with `assert_inside_safe()` at render time and `validate_frames.py` at post-render time. Simpler, fewer moving parts, no ffmpeg pad gymnastics.
-
-For 1920×1080 final output (Strategy B), the proven zoning is:
-
-```
-y_pixel:  0    80                                     905    980   1020      1080
-          ├────┼─────────────────────────────────────┼──────┼─────┼──────────┤
-          │TOP │              CONTENT                │BOTTOM│ BUF │ CAPTION  │
-          │CHR │              ZONE                   │CHROME│ FER │  STRIP   │
-          └────┴─────────────────────────────────────┴──────┴─────┴──────────┘
-          ↑ Manim renders here, native 1920×1080                  ↑
-          to_corner UL/UR buff=0.30                          libass MarginV=20
-
-           Bottom-chrome zone (905-980): brand mark + scene dots,
-           to_corner DL/DR buff=1.0 → y_manim -3.0 → y_pixel 945
-           BUFFER zone (980-1019): MUST stay bg color — validator enforces
-           Caption strip (1020-1080): libass burns text here, 30-px tall
-```
-
-Manim config:
+Allowed positioning primitives — content position ALWAYS comes from one of these:
 ```python
-config.pixel_width  = 1920
-config.pixel_height = 1080
-config.frame_height = 8.0          # Manim default; 1 unit = 135 px
-config.frame_rate   = 30
-
-CONTENT_FLOOR = -2.7              # in-scene y must be > this; matches y_pixel 905
-CONTENT_CEIL  =  3.4              # in-scene y must be < this; matches y_pixel 81
+a.next_to(b, DOWN, buff=MED_LARGE_BUFF)     # relative to another object
+a.next_to(b, RIGHT).match_y(c)              # compound: x from b, y aligned to c
+a.align_to(b, LEFT)                         # share an edge
+a.to_edge(UP, buff=LARGE_BUFF)              # to a frame edge (chrome only)
+a.to_corner(UL)                             # to a corner (chrome only)
+VGroup(*items).arrange(DOWN, buff=MED_SMALL_BUFF, aligned_edge=LEFT)
+VGroup(*items).arrange_in_grid(rows, cols, buff=...)
+dots = Dot().get_grid(n_rows, n_cols, buff_ratio=0.5)
+a.match_x(b) / a.match_y(b) / a.match_width(b) / a.match_height(b)
 ```
 
-Caption burned with libass, no ffmpeg pad needed:
-```bash
-ffmpeg -i scenes_concat.mp4 \
-    -vf "subtitles=cap.srt:force_style='Alignment=2,MarginV=20,FontSize=22,FontName=Inter Tight,Bold=1,PrimaryColour=&H00ECECEC&'" \
-    -c:v libx264 ...
+**Boxes and pills are content-sized, never hand-sized:**
+```python
+rect = SurroundingRectangle(label, buff=SMALL_BUFF)   # measures real glyph bounds
+brace = Brace(group, DOWN); brace.get_text("12,288")   # fits the span, anchors at tip
+under = Underline(word)                                 # width derived from content
 ```
+`SurroundingRectangle` is used ~1,400× in the repo and **cannot clip or mis-center** because its size = `target.get_shape() + 2*buff` (`shape_matchers.py:22`). Delete every `text_width()` character-count heuristic — it has no analog in real code.
 
-The 40-pixel **buffer zone** at y_pixel 980-1019 is the heart of the validator. Nothing in Manim should reach it (chrome ends at y_pixel ~960, content stops at y_pixel ~900). Captions can't reach it (caption text top is at y_pixel ~1030 with MarginV=20). If the validator detects any non-bg pixel in this band, **something drifted** — either a Manim mobject extended too far down OR the caption renderer pushed text above the band. Either way, fix it.
+**The buff ladder is the ONLY source of gaps** (`default_config.yml:109`):
+```
+SMALL_BUFF=0.1   MED_SMALL_BUFF=0.25   MED_LARGE_BUFF=0.5   LARGE_BUFF=1.0
+```
+Never write `buff=0.37`. Consistent margins across scenes come for free from this ladder.
 
-**Why this works:** SMPTE ST 2046-1 (Safe Title Area), EBU R 95 (graphics safe area), and the BBC subtitle guidelines all reserve outer pixel bands for captions/chrome. The BBC docs explicitly recommend "captions in any black bars present within the video." This is the broadcast standard, not a workaround.
+**Build the group, then place the group.** Assemble a `VGroup` declaratively, `.arrange()` its internals once, then position the whole thing. This is the dominant pattern across the repo's thousands of `VGroup`s. Never position leaf elements against screen coordinates.
 
-### Layer 2 — Constraint-based positioning (prevents drift)
+**Labels on moving targets follow live:** `label.always.next_to(target, UP, buff=SMALL_BUFF)` (or `add_updater`). A single-frame bbox assert can't catch a mid-animation collision; a re-running `next_to` never collides.
 
-In Manim, **forbid absolute `.move_to([x, y, z])`**. Allowed primitives:
+> Because of Law 1, the old "Five-Layer Defense" (bbox asserts + frame validator + ffmpeg caption pad) is **retired**. Overlap is prevented at construction. Keep at most a light visual probe-frame check for *taste and timing*, not collision.
 
-- `.next_to(other, direction, buff=...)`
-- `.align_to(other, direction)`
-- `.to_corner(EDGE, buff=...)` (only for chrome — never content)
-- `.to_edge(EDGE, buff=...)` (only for chrome)
-- `VGroup(*things).arrange(direction, buff=...)`
-- `VGroup(*things).arrange_in_grid(rows, cols, buff=...)`
-- `SurroundingRectangle(target, buff=...)`
+### Law 2 — Motion carries meaning. Born-from, never spawn.
 
-Jérôme Eertmans codified the rule in *How I write long Manim presentations*: *"prefer positioning your objects relative to each other... you never know the final position of each object in the canvas, because you can always add or remove slides in between."*
-
-For complex multi-region scenes, wrap a `kiwisolver`-based mini layout engine (Cassowary constraints — the same algorithm behind iOS AutoLayout, already a matplotlib dep). Or use [`poga`](https://github.com/dzhsurf/poga) — Python bindings for Facebook's Yoga (the Flexbox engine behind React Native). Motion Canvas (Manim's JS spiritual successor) adopted Flexbox for the same reason.
-
-In matplotlib, the analog is `.set_position()` only via `axes_grid1` toolkit / `constrained_layout` — never via `bbox_to_anchor` raw coords.
-
-### Layer 3 — Programmatic bbox guard (`layout_guards.py`)
-
-At the end of each scene's `construct()`, walk the bounding-box matrix and assert no two non-whitelisted mobjects intersect with less than the required gap:
+The highest-frequency, highest-leverage technique in the corpus: **a key object enters by transforming from the concrete thing it abstracts**, so the causal link is visible.
 
 ```python
-from layout_guards import assert_no_overlap, assert_inside_safe
-
-class MyScene(Scene):
-    def construct(self):
-        ...
-        # before the final wait, validate the layout
-        visible = [title, math_eq, hero_number, strip]
-        assert_inside_safe(*visible)
-        assert_no_overlap(*visible, min_gap=gap_units(12))   # 12-px gap
+# the DALL·E image literally dissolves INTO the numeric vector entries (attention.py:128)
+self.play(LaggedStart(*(bake_mobject_into_vector_entries(img, vec) for img, vec in ...)))
+# 12,288 numbers collapse into a single symbol E_n  (attention.py:200)
+self.play(FadeTransform(entry, sym))
+# a formula term is delivered by morphing the data column it denotes (ml_basics.py:642)
+self.play(TransformFromCopy(data_column, x_symbols))
 ```
 
-Helper:
+Transform-family hard counts (attention.py): **`TransformFromCopy` 46 > `FadeTransform` 31 > `ReplacementTransform` 6 > plain `Transform` ~5 ; `TransformMatchingTex` 0.**
+- **`TransformFromCopy(src, dst)` is THE workhorse** — source persists, a copy morphs to the destination, so the viewer sees "this *becomes* that" while "this" is still there.
+- For equation retitles, `TransformMatchingStrings` (not `...Tex`).
+- **Never `FadeIn` a load-bearing object from nothing.** Decorative scaffolding can fade in; the thing the lesson is about must be born from its referent.
+
+**`time_span=(start, end)` choreographs a reveal inside ONE `self.play`** (used 638× in the repo) so a camera move and a multi-part reveal cascade together instead of firing simultaneously:
 ```python
-def assert_no_overlap(*mobs, min_gap=0.1, allow=None):
-    for a in mobs:
-        for b in mobs[i+1:]:
-            if (id(a), id(b)) in allow_set: continue
-            # check bbox intersection with min_gap buffer
-            ...
-
-def assert_inside_safe(*mobs, top=2.85, bottom=-2.85, left=-7.0, right=7.0):
-    # check every mob's bbox is inside the safe content area
+# the softmax aha — one play, run_time=3, cascaded (attention.py:921)
+self.play(
+    self.frame.animate.reorient(...),
+    GrowArrow(arrow, time_span=(1, 2)),
+    FadeIn(label, time_span=(1, 2)),
+    TransformFromCopy(ndp_col, softmax_col, time_span=(1.5, 3)),
+    run_time=3,
+)
 ```
 
-Soft mode: `LAYOUT_GUARDS_SOFT=1` makes the helpers print warnings instead of raising. Use it on the first pass, then turn it off.
-
-### Layer 4 — Visual frame validator (`validate_frames.py`)
-
-After the final mp4 is built, sample N frames and check that the buffer zone is uniform background color.
-
-**DO NOT use MSER text detection** — it produces tens of thousands of false-positive "overlaps" because it detects each character at multiple scales as separate regions. We tried this in pass 4; the output was unusable.
-
-**DO use color-variance per zone:**
+**`generate_target` / `MoveToTarget`** (127 refs) is how dozens of objects snap into a new arrangement with zero hand-keyed coordinates:
 ```python
-buf_zone = img[940:959, :, :]                # the hard buffer
-diff = np.abs(buf_zone - bg_color).sum(axis=2)
-assert diff.std() < 4.0,  "buffer not uniform"
-assert diff.mean() < 6.0, "buffer is not bg color"
+grp.target = grp.generate_target()
+grp.target.arrange(RIGHT, buff=0.15)   # mutate the target with normal layout calls
+grp.target.scale(0.65).next_to(anchor, DOWN)
+self.play(MoveToTarget(grp))
 ```
 
-If the buffer std > 4 → something rendered there (impossible if Layer 1 is correct, so this is a smoke alarm). Exit 1.
+### Law 3 — A tiny domain DSL gives consistency.
 
-For text-vs-text overlap detection (within the content zone), the right tool is a **vision-language model** (Claude Vision, GPT-4V): sample 4 frames into a 2×2 grid, ask "are any text regions overlapping?" Costs cents per validation. Vastly more accurate than any classical CV approach.
+Every video defines ~6 custom Mobjects/Animations in a `helpers.py` plus ~6 scene-local `get_*`/`show_*` factories. A *vocabulary, not a framework*. This is the mechanism for both consistency and no-overlap (the objects arrange themselves).
 
-### Layer 5 — Cheap iteration loop (`preview.sh`)
+> **For ML content, don't start from scratch — vendor 3b1b's transformer DSL** (`NumericEmbedding`, `WeightMatrix`, `EmbeddingArray`, `ContextAnimation`, `value_to_color`). It is the single fastest path to the authentic "columns of real numbers" look. See §13.
 
-3b1b iterates via `manimgl`'s live OpenGL preview + Sublime `checkpoint_paste()` — sub-second feedback. We can't have that in an async workflow, but we can get close: `manim -ql -s --format=png` renders only the LAST frame of a scene as a PNG in ~10 seconds, no audio cost, no video encode.
-
-```bash
-# preview.sh
-manim -ql -s --format=png manim_scenes.py "$SCENE"
-cp media/images/.../scene.png preview/$SCENE_last.png
-echo "preview ready: preview/$SCENE_last.png"
+**Mobject-subclass recipe** (model: `Dial`, `helpers.py:655`; `MachineWithDials:761`):
+```python
+class WidgetThing(VGroup):
+    def __init__(self, value=0, ...):
+        # 1. build sub-parts
+        body = Rectangle(...); needle = Line(...)
+        # 2. lay them out RELATIVELY (ratio buffers, never move_to([x,y,0]))
+        ticks = Line(...).get_grid(1, n, buff_ratio=0.5)
+        ticks.set_width(body.get_width() - SMALL_BUFF); ticks.move_to(body)
+        # 3. assemble, 4. name every meaningful part
+        super().__init__(body, ticks, needle)
+        self.body, self.needle = body, needle
+        # 5. a state mutator that recomputes geometry+style from the logical value
+        self.set_value(value)
+    def set_value(self, v):
+        self.needle.put_start_and_end_on(self.get_center(), self._value_to_point(v))
+        self.needle.set_color(value_to_color(v))     # color is a pure function of value
+    def animate_set_value(self, v, **kw):            # 6. methods that RETURN animations
+        return AnimationGroup(self.animate.set_value(v), ...)
 ```
 
-Use this for layout iteration: change a coord, run `bash preview.sh S05_CSA`, open the PNG, adjust, repeat. ElevenLabs voiceover cache means zero API cost on iteration.
+**`show_*(scene, ...)` choreography-verb recipe** (model: `show_matrix_vector_product`, `helpers.py:97`):
+- first arg is `scene`; the function calls `scene.play/scene.wait` internally,
+- owns its transient highlights via a `last_rects`/`to_fade` accumulator so **exactly one highlight is ever on screen**,
+- **returns** the persistent mobjects it created.
 
-### Practical run order with all 5 layers
+**Variants are 2-line subclasses of a shared base overriding one class attribute** — never a copy-pasted `construct()` (model `HighlightEarthOrbit(NearestPlanets)` with `highlighted_orbit = 2`, and its sibling `HighlightMarsOrbit(NearestPlanets)` with `= 3`; `planets.py:2202`). Domain numbers live in ALL-CAPS module constants with one `conversion_factor` (`planets.py:4`), so sizes can't disagree across scenes.
 
-```bash
-# 1) iterate layout on one scene (Layer 5 — fast)
-bash preview.sh S05_CSA       # look at preview/S05_CSA_last.png
+**Large data uses honest ellipsis:** render a finite set, swap one element for `Tex(R"\dots")` (or `ellipses_row=-2`, default in `WeightMatrix`), so big arrays read as big without overflowing (`helpers.py:478, 620`).
 
-# 2) full build (Layers 1+3 kick in automatically)
-NOCACHE=1 bash RENDER.sh all  # outputs ../output/final.mp4
+### Law 4 — Earned 3D only, and 3D is never static.
 
-# 3) validate (Layer 4)
-python3 validate_frames.py ../output/final.mp4
-# any HARD failure (buffer zone violated) → Layer 1 broke
-# any soft failure → text-on-text or font metric surprise → use VLM check
+3D is earned **only when a quantity's dimensionality is the payload** (a vector space, a surface `f(x,y)=z`, a volumetric field). Roughly half of even the attention video is intentionally flat. A flat data series in 3D is the #1 faux-3D tell — and the old matplotlib "isometric stack of parallelograms" cube is exactly the slop to never produce.
 
-# 4) first pass with soft assertions:
-LAYOUT_GUARDS_SOFT=1 NOCACHE=1 bash RENDER.sh all
-# get warnings, then turn soft off
+> **Production lesson (§13): 3D actively HURTS a *stack of thin layers*** (interleaved attention layers, a residual tower) — viewed at an angle they collapse into one solid block and the per-layer colors vanish. Render those **flat, face-on**. Reserve 3D for clouds, surfaces, and collapsing volumes.
+
+> **Counter-lesson — over-flattening is its own slop (learned shipping the DeepSeek/Qwen attention series).** Apply "flat by default" too zealously and every scene becomes the same colored square grid. A viewer's note, verbatim: *"it just seems like a single block matrix throughout the whole video, we're lacking elements."* Flatness is honest, but monotony kills retention, and the cure is **variety + rigor**, not decoration:
+> - **Rotate the visual primitive across the reel.** Don't reuse the row-of-cells / n×n grid in more than ~half the scenes. Across ~10 beats budget at least: one **numeric-matrix** scene, one **on-screen equation**, one **earned-3D** scene — plus vectors / a plot / a code view.
+> - **Earned-3D is earned more often than "half flat" implies — use it.** Three patterns that shipped clean (and read as *not* faux-3D because dimensionality IS the payload):
+>   - **A memory/field as a `z=f(x,y)` surface that DEFORMS under its update.** e.g. the gated-delta-rule state: forget = scale heights down, erase = remove a bump, write = raise a new bump. `srf = ThreeDAxes((-3,3),(-3,3),(0,3)).get_graph(lambda x,y: sum_of_gaussians(x,y,bumps)); srf.set_opacity(0.7); srf.always_sort_to_camera(self.camera)` then `Transform(srf, make_surf(new_bumps))` between states; `frame.add_ambient_rotation(0.5*DEG)` to orbit.
+>   - **A multi-dimensional tensor as a `Cube` volume that grows or collapses.** The KV cache is *tokens×layers×heads* (grow it: `cube.animate.set_width(w, stretch=True, about_edge=LEFT)`); attention compute is *L×L×d* collapsing to *L×k×d* (`set_width(0.8, stretch=True)`). `box3d(w,h,d)=Cube(opacity=0.3).set_width/height/depth(.., stretch=True)`.
+>   - **An embedding space as 3D vectors / a `GlowDots` point cloud** for relevance-as-alignment or nearest-neighbour selection.
+>   - **A feature/representation geometry as a polytope of unit vectors** (the superposition reel): `Line(ORIGIN, v)` rays + `GlowDot` tips + faint hull `Line`s, `set_floor_plane('xz')`, and *escalate the dimension* — show the 2-D cases face-on (antipodal pair, then a triangle in-plane), then `reorient` into 3-D for the tetrahedron with `add_ambient_rotation`. The directions in space ARE the payload (a genuine vector space), so it never reads as faux-3D. Sequence the corner readout swaps (`D=\frac{2}{3}` → `D=\frac{3}{4}`) with non-overlapping `time_span` or the speed-fit stretch garbles them.
+> - **Show the REAL math, not abstract blocks — the single biggest density win.** Replace a colored grid with the actual numbers + the actual equation:
+>   - Numeric matrices/vectors with **exact, consistent** values: `WeightMatrix(values=...)`, `NumericEmbedding(values=...)` (compute the numbers so `Δ = v − Sk` literally checks out on a pause), then `show_matrix_vector_product(scene, M, v)` to animate `o = S q` row-by-row.
+>   - Animate a **dot product accumulating** pair-by-pair: `for i: FlashAround(q[i]); FlashAround(k[i]); ChangeDecimalToValue(running_sum, partials[i])`.
+>   - Pin the **actual update/score equation** as `Tex` (`S_t = S_{t-1}\alpha_t(I-\beta_t k_t k_t^\top)+\beta_t k_t v_t^\top`, `I_{t,s}=\sum_h w_h\,\mathrm{ReLU}(q_h\cdot k_s)`) with `fix_in_frame()` — **but above `CAP_FLOOR`**: a `to_edge(DOWN)` HUD equation lands *inside* the burned-caption band, so place it at y ≈ −2.4, not −3.4.
+
+There is one camera verb. All five DOF specified together:
+```python
+self.frame.reorient(theta_deg, phi_deg, gamma_deg, center_tuple, height)
+#                   azimuth     polar    roll       look-at      zoom(=visible height)
+# static set, or animated inside a play that ALSO moves content:
+self.play(self.frame.animate.reorient(-21, 79, 0, (1.13, 0.35, 0.88), 3.81), run_time=5)
+```
+- Angles in **degrees**. `reorient(0, 0, 0, center, height)` is a flat pan/zoom used constantly even in 2D — the camera is the pointer.
+- **Camera args must look hand-tuned, not round.** `reorient(-178, 9, 178, (2.15, 1.12, 0.56), 6.84)`, never `reorient(45, 60, 0)`. (Grant copies exact numbers out of interactive mode.)
+- **A 3D scene is never static.** Either chain multiple reorients with multi-second `run_time`s, or `self.frame.add_ambient_rotation(0.5 * DEG)` during holds. Call `self.frame.clear_updaters()` before a new scripted reorient so ambient + scripted motion don't compound.
+- `self.set_floor_plane('xz')` when Y is up and Z is depth (makes hand-tuned angles compose intuitively).
+
+3D legibility kit (from the holograms video, the 3D gold standard):
+- **Vectors/arrows in 3D** get `vector.always.set_perpendicular_to_camera(self.frame)` so they don't foreshorten edge-on (`geometry.py:798` — it's a `Line` method; every real call site applies it to a vector, never a `Text`). **Text labels** in 3D are kept readable a different way: either lay them into the plane (`label.rotate(PI/2, RIGHT)` + `set_backstroke(BLACK, 3)`) as spatial labels that move with the camera, **or** pin them as a HUD with `fix_in_frame()` (titles/equations/readouts). That two-layer split — spatial vectors face-camera, text labels either in-plane or fixed-in-frame — is the legibility rule.
+- Light sources/sparks/dots are **`GlowDot`/`GlowDots`/`TrueDot`/`DotCloud`** (additive glow), **never a shaded `Sphere`** (a Lambert ball reads as a solid ball — faux-3D tell). A beam = ~50 stacked `GlowDots` of rising radius, ~3/n opacity.
+- Coplanar stacks separate by tiny graded offsets along `IN`/`OUT` (1e-3…2e-2) to kill z-fighting.
+- `surface.always_sort_to_camera(self.camera)` on any translucent surface that will be orbited.
+- Real 3D solids use real depth (`Cube().set_shape(w,h,depth)`), never an extruded flat rect — so a side view doesn't collapse.
+- **The 3D should not be able to lie:** drive the render from a real point array / real projected data (`basis @ model[word]`), so the picture is a computed consequence of the geometry.
+
+### Law 5 — The metronome (measured pacing).
+
+These numbers are counted from the source, not guessed.
+
+- **play : wait ≈ 1.6 : 1.** Stable across the corpus (attention 216/148, 2025 aggregate 2287/1414). ~3 animated actions per 2 holds. Flag scenes below 1.2 or above 2.0.
+- **The default hold is `self.wait()` with no argument = 1.0s, and it is 80% of all waits.** Write the bare call. Don't emit `wait(1)` or `wait(1.7)`.
+- **Timed waits come from a small rounded set:** `{0.5, 2, 3, 4, 5}` for content; `{8,10,12,15,20,30}` only for ambient/3D holds. (One `wait(1.5)` and one `wait(0.25)` exist in the *entire* transformers corpus.)
+- **95% of plays use the default `run_time=1.0`.** Emit a bare `self.play(...)`. Override only with purpose: `run_time=2` is the deliberate-reveal workhorse (~2× the next value), `3–5` for important/complex reveals, `0.5` for a snappy punch.
+- **`run_time ≥ 8` is exclusively camera moves / axis `Rotate` / slow enumerations, almost always `rate_func=linear`.** Never on a text `FadeIn`.
+- **`lag_ratio` is an intent dial:** `0.1` = standard gentle stagger (the default, ~2.3× the next value, usually with `FadeIn`); `0.25–0.5` = readable "enumerate, read each" cascade; `0.01–0.05` = near-simultaneous bulk reveal (matrix entries, dot fields); `1.0` = strict succession; `0` = simultaneous. Scale to count with `lag_ratio=1.0/len(items)` to hold total duration constant.
+- **`rate_func` is left default (smooth ease) ~97% of the time.** The only overrides that earn their place: `there_and_back` (emphasis pulse returning to rest), `linear` (continuous camera/rotation), `there_and_back_with_pause`, `rush_from` (snappy entrance, often `run_time=0.5`). Never set `rate_func` unless the motion's *meaning* requires it.
+- **The authoring unit is the labeled beat:** one `# Capitalized beat` comment ≈ one `self.wait()` (attention: 149 comments / 148 waits). Each beat = 1–2 plays then a wait. Avoid firing 5+ animations before a hold.
+- **`self.add()` is the silent reveal** (1 instant add per ~3.5 plays): drop in scaffolding/re-layered elements with zero runtime; animate only the element the eye should follow.
+- **Ensembles always stagger.** Many similar objects enter via `LaggedStartMap(FadeIn, group, shift=0.25*DOWN, lag_ratio=0.1)`, never a simultaneous `FadeIn(a), FadeIn(b)` (that stacks — the #1 slop tell). Nest `LaggedStart` + `.shuffle()` for a field of many things so timing isn't mechanical.
+
+### Law 6 — One color per concept; figure/ground discipline.
+
+- **Default everything WHITE on BLACK.** Greys (`GREY_A..E`) for chrome/de-emphasis. Spend a saturated hue only on a load-bearing role, **bound to a named variable reused everywhere** (`value_color = RED`; Q=`YELLOW`, K=`TEAL`, V=`RED`, input=`BLUE_B`). Never flood the frame with color.
+- **Color is assigned inline per part** (`part.set_color(NAMED)` — 226× in transformers) and bound to a concept; `t2c=` is fine at construction but used far less. Do **not** color by hand-counted glyph slices — use substring indexing `eq["\\omega"].set_color(PINK)` or `t2c`.
+- **Signed numeric grids use `value_to_color`** (`helpers.py:51`): positive→blue (`BLUE_E→BLUE_B`), negative→red (`RED_E→RED_B`), magnitude→lightness, blended in HSL. **Unsigned** data (raw embeddings) uses magnitude-only `GREY_C→WHITE` — never a good/bad diverging scale on neutral data. Forbid hand-setting per-element colors on number grids.
+- Real palette is manimGL's `default_config.yml` (see §8 for the full A–E ladder + correct hexes). **`YELLOW` is pure `#FFFF00`**, not the old skill's invented `#F7D96F`.
+
+---
+
+## 4. Workflow
+
+```
+User has...                          → Start at...
+─────────────────────────────────────────────────────────
+Topic/paper, no plan                 → Recon → Beat-sheet → DSL → Build → Ground
+A beat-sheet                         → DSL → Build → Ground
+A helpers.py + beat-sheet            → Build → Ground
+A finished video                     → Grounding pass
 ```
 
-### Failure modes specifically caught by each layer
+Always ask what they have and what they need; don't assume the full pipeline.
 
-| Failure | Caught by | Mechanism |
+1. **AHA + Recon.** One sentence: the shift in perspective the viewer leaves with. If it's a fact, not a shift, stop. Then a *lean* recon (see §5) — primary source + 2 independent writeups for anything recent; flag every claim DIRECT/INFERRED/UNCERTAIN.
+2. **Beat-sheet** (§6) — the ordered named beats that read as the narration. This replaces the old word-count `brainstorm.md`.
+3. **Gate A — claims ledger (§10).** Before writing scene code, verify *every* number/label/claim the beats will assert against the primary source. Fix or cut anything not CONFIRMED. Cheaper to fix on paper than in a rendered scene.
+4. **DSL** — write `helpers.py` (and vendor `tb_helpers.py`, §13): the self-arranging Mobjects + `show_*` verbs the beat-sheet needs.
+5. **Build** — thin `InteractiveScene` files, beats as `# comments`. The continuous-VO + speed-fit + captions pipeline is §13.
+6. **Render → read frames → fix** loop (§13): every scene, every overlap/garble. 3–8 cycles.
+7. **Gate B — audit the rendered video (§10).** Sample frames across the whole cut, read each, confirm on-screen numbers/labels/captions/thumbnail are all correct and clean. **Nothing ships until this passes.**
+8. **Caption + thumbnail + ship.**
+
+The render→critique→re-render loop still applies: render, sample 5–10 key frames (`manimgl -w` then `ffmpeg -ss T -frames:v 1`, or `manim -ql -s --format=png` for a scene's last frame), read each frame, fix, re-render. 3–8 cycles. But you are now checking *taste, timing, and motion*, not hunting collisions — Law 1 already prevents those.
+
+---
+
+## 5. Recon (lean)
+
+For the paper/topic, produce concise working docs (no word-count targets — quality is whether they're *usable*, not long):
+
+- **`paper-summary.md`** — title + arXiv ID + authors; per-claim DIRECT/INFERRED/UNCERTAIN; the thing studied; method; the numbers that matter; lineage; limitations; why-now; hook angles in tension.
+- **`related-work.md`** — lineage tree, predecessor/competitor deltas, what it does and does NOT contribute.
+- **`discussions.md`** — the social reception: camps, surfaces to cite, which hook will latch.
+- **`moodboard.md`** — references mined from the audience's visual world (Distill.pub, Anthropic Circuits, 3b1b itself), each with one line on what to steal. **For manim, the strongest moodboard is the relevant `_2024/transformers/*.py` scene itself** — point at the exact scene that already solves a similar visual.
+
+Discipline: never quote hard citation counts ("widely cited", not "348 citations"); avoid generic adjectives; flag every recent (≤6 mo) claim for re-verification at publish time. Use BrightData (`mcp__brightdata__scrape_as_markdown`, `search_engine`) for primary + 2 secondary sources; fall back to `WebFetch`/`WebSearch`.
+
+---
+
+## 6. The beat-sheet (replaces the old brainstorm.md)
+
+The real 3b1b planning artifact is an **ordered, numbered list of named beats** that mirrors `SCENES_IN_ORDER` and the in-`construct()` section comments — it reads top-to-bottom as the spoken script. Model: `ml_basics.py`, `attention.py` section comments, `supplements.py` chapter banners.
+
+`beat-sheet.md` format — one line per beat:
+```
+NN. BeatName — <imperative narration verb: Show/Ask/Label/Contrast/Highlight> + the single idea
+     · operates-on: <which persistent object this beat moves>
+     · [REVEAL]  (if this is THE aha: tag reorient + run_time≥2-6 + wait≥2 after)
+     · objection: <predicted viewer confusion here> → <the interjection beat that resolves it>
+     · caveat:    <if this beat simplifies, name the honesty beat that flags it>
+```
+
+Mandatory structure:
+- **ESTABLISH** first: nest the topic in known categories (Transformer → Deep Learning → ML → "learn from data"), zooming down to the one concrete object the video manipulates. Never open on a labelled diagram or a definition. Open on the *phenomenon* (the crime scene).
+- **GAME-PLAN** beat: an on-screen ordered checklist of the chapter's atomic teaching units.
+- **One persistent worked example**, locked (the "fluffy blue creature" / "Michael Jordan → Basketball"), carried by the *same mobjects* from setup to payoff. If any beat introduces a NEW concrete example mid-thread, flag it.
+- **Every formula is grounded:** the formula beat sits *after* its motivating concrete beats, and is immediately dismantled back to concrete arrays with color-coded symbol→object mapping (`DescribeAttentionEquation`, `attention.py:1850`).
+- **Motivate-by-violation** for any normalizing op (softmax/normalization/masking): show the raw output *failing* the desired property first, then introduce the op as relief.
+- **Tag exactly one beat `[REVEAL]`** and give it the reveal rhythm. Setup beats stay at default time.
+- **Objection + caveat columns:** in-lesson, per-beat objection handling and scheduled honesty beats wherever you simplify (translate the recon's DIRECT/INFERRED/UNCERTAIN flags into on-screen caveats).
+- **RECAP** beat mirrors the opening game-plan with units checked off; mark PREVIEW→PAYOFF pairs.
+
+**Self-check before building:** read the beats top-to-bottom. Do they form a coherent spoken narration where (a) phenomenon precedes formalism, (b) one example carries throughout, (c) the AHA is tagged and paced, (d) every formula is grounded, (e) objections/caveats sit at their trigger points, (f) a recap mirrors the open? If it reads as a feature list, it fails.
+
+---
+
+## 7. manimGL grammar reference (the real catalog)
+
+### Animations that exist (use these by exact name)
+- **Reveal:** `FadeIn(m, shift=0.25*DOWN, scale=2)` (most common), `Write(m)` (text/equations; default `rate_func=linear`, auto run_time), `ShowCreation(m)` (strokes/paths), `DrawBorderThenFill(m)`, `GrowFromCenter/GrowFromPoint/GrowArrow`, `FadeInFromPoint(m, point)`.
+- **Morph:** `TransformFromCopy(src, dst)` ⟵ workhorse, `FadeTransform(a, b)`, `Transform(a, b)`, `ReplacementTransform(a, b)`, `TransformMatchingStrings(eq1, eq2, key_map={...})`, `FadeTransformPieces`. Use `path_arc=PI/2` for an arced morph (~1,200× in repo).
+- **Compose:** `LaggedStart(*anims, lag_ratio=0.1)`, `LaggedStartMap(FadeIn, group, shift=, lag_ratio=)`, `AnimationGroup(*anims)`, `Succession`. Schedule sub-anims with `time_span=(a,b)` and/or per-target `.set_anim_args(run_time=, rate_func=)`.
+- **Emphasis (the real set):** `FlashAround(m, time_width=1.5, run_time=2)`, `Flash(point)`, `FlashUnder(m)`, `VShowPassingFlash(path, time_width=1.5, run_time=4)` (glowing pulse along a connection), `FocusOn`, `WiggleOutThenIn`.
+- **Numbers:** `ChangeDecimalToValue(dec, target)`, `CountInFrom(dec, start)` — `dec` must be a `DecimalNumber`/`Integer`. For bespoke motion, `UpdateFromAlphaFunc(m, lambda m,a: ...)` (the escape hatch Grant actually uses) over inventing `Animation` subclasses.
+- **Move/rotate:** `MoveToTarget(m)` (+ `m.generate_target()`), `Restore(m)` (+ `m.save_state()`), `MoveAlongPath`, `Rotate(m, PI)` (discrete) vs `Rotating(m, TAU, run_time=5, rate_func=linear)` (continuous), `m.animate.method(...)`.
+
+### The 15 rate functions (the ONLY ones that exist)
+`linear, smooth (default), rush_into, rush_from, slow_into, double_smooth, there_and_back, there_and_back_with_pause, running_start, overshoot, not_quite_there, wiggle, squish_rate_func(f,a,b), lingering, exponential_decay`. `smooth` is a quintic smoothstep. `squish_rate_func` is a *factory* returning a rate func (windows an ease into part of an animation).
+
+### Text & math
+- `Tex(R"...")` — pure math (raw strings always). `TexText("words $math$ words")` — prose with inline math. `Text("plain", alignment="LEFT")` — non-LaTeX (Pango).
+- Substring access: `eq["Q"]` (all occurrences, a VGroup), `eq["Q"][0]` (first), `eq[R"\sqrt{d_k}"][0][1:3]` (specific glyphs). Mark selectable substrings with `isolate=[...]` or `t2c` keys (which auto-isolate). Substrings can't partially overlap.
+- Color: `Tex(R"e^{i\omega t}", t2c={R"\omega": PINK, "t": BLUE})` at construction, or inline `eq["\\omega"].set_color(PINK)`.
+- Animate a number inside an equation: `dec = eq.make_number_changeable("0.00")`, then drive `dec` with an updater/`ValueTracker` — don't rebuild the `Tex`.
+- Braces: `Brace(mob, DOWN, buff=0.2)` then `brace.get_text("A.U.")` / `brace.get_tex(R"2R_E")`. There is no `brace_text()` free function. `BraceLabel`/`BraceText` when brace+label move as a unit.
+- Legibility: `m.set_backstroke(BLACK, 5)` (width 3 small / 5 labels / 8 headline) on any text over busy content — 42× in transformers, preferred over background rectangles.
+
+### Building blocks
+- Matrices/vectors: `DecimalMatrix`, `IntegerMatrix`, `TexMatrix`, `MobjectMatrix`; address via `.get_rows()/.get_columns()/.get_entries()/.get_brackets()/.get_column(i)`. Entries auto-tile; brackets auto-fit. (Prefer the video DSL `WeightMatrix`/`NumericEmbedding`.)
+- Graphs: place data-space objects with `axes.c2p(x,y)` / `number_line.n2p(x)`; labels via `add_coordinate_labels()/get_axis_labels()`. Never compute pixel positions.
+- Bars are rectangles: `Rectangle(prob * width_100p, bar_height)` (width is positional, first arg = value); `VGroup(*bars).arrange(DOWN, aligned_edge=LEFT)`; `set_submobject_colors_by_gradient(TEAL, YELLOW)`. No `BarChart`/`Axes` for distributions — length-encoding is the point.
+- Connectors: pass node *mobjects* as endpoints — `Arrow(boxA, boxB, buff=0.1)` — so endpoints resolve to boundaries. For data flow, *transform the data object* between stages rather than drawing arrow glyphs.
+- Animated scalar: one `ValueTracker` + `always_redraw`/updaters + `DecimalNumber.set_value`, so one number drives all dependents and nothing drifts. (455 `ValueTracker`, 253 `always_redraw` in repo.) Two-tier sugar: `m.f_always.method(getter)` and `m.always.method(args)` over raw `add_updater` where it reads cleaner — pass *bound* getters (`orbit.get_start`), not calls.
+
+### Camera / 3D
+`self.frame.reorient(theta, phi, gamma, center, height)` (degrees) · `frame.animate.reorient(...)` inside a play · `frame.add_ambient_rotation(1*DEG)` · `frame.to_default_state()` (snap front-on) · `frame.set_height(h)` (zoom) · `self.set_floor_plane('xz')`. Surfaces: `ParametricSurface(lambda u,v: [...], u_range=, v_range=, resolution=(nu,nv))` or subclass `Surface`; built-ins `Sphere, Torus, Cylinder, Cube, Prism, Square3D, ThreeDAxes, TexturedSurface`. Color a surface with `set_color(c, opacity)` + `set_shading(refl, gloss, shadow)` (flat 2D mobjects use `set_shading(0,0,0)`); `always_sort_to_camera(self.camera)` for translucent. Light: `self.camera.light_source.move_to(...)`.
+
+---
+
+## 8. Brand baseline (manimGL `default_config.yml`)
+
+Canvas is **pure black `#000000`**; default mobject color **WHITE**. manimGL's engine default bg is `#333333` — so to get the brand-black canvas, drop a `custom_config.yml` in the project dir (the way the videos repo does). **Verified working** (corner pixel renders `(0,0,0)`):
+```yaml
+# custom_config.yml — manimgl reads it from the working directory
+camera:
+  background_color: "#000000"
+```
+
+**Core hues** (each has a full A=light → E=dark ladder; `C` is the base alias):
+```
+BLUE_A #C7E9F1  B #9CDCEB  C/BLUE #58C4DD  D #29ABCA  E #1C758A
+RED_A  #F7A1A3  B #FF8080  C/RED  #FC6255  D #E65A4C  E #CF5044
+GREEN_A ...     ...        C/GREEN #83C167 ...        E ...
+TEAL_C  #5CD0B3   PURPLE_C #9A72AC   GOLD_C #F0AC5F   MAROON ladder
+YELLOW_C/YELLOW  #FFFF00 (pure!)   YELLOW_D #F4D345   YELLOW_E #E8C11C
+ORANGE  #FF862F (no ladder)
+GREY_A #DDDDDD  B #BBBBBB  C/GREY #888888  D #444444  E #222222
+GREY_BROWN #736357   PINK #D147BD   WHITE #FFFFFF   BLACK #000000
+COLORMAP_3B1B = [BLUE_E, GREEN, YELLOW, RED]   # the canonical 4-stop heatmap
+```
+Use named constants and their A–E steps — never invent hexes. `value_to_color` (signed blue/red) and `color_gradient(colors, n)` / `interpolate_color_by_hsl` for ramps.
+
+**Color roles** (bind each to a named variable, reuse everywhere): orange = hero/innovation · yellow = single aha pulse (one per video) · blue = data/process · green = correct/converged · red = error/caveat · purple = secondary · grey = chrome/de-emphasis.
+
+**Typography (manim scenes):** math `Tex` renders in `mathastext` (3b1b's look; `\minus` macro available). `Text`/`TexText` default to `CMU Serif`, `alignment="CENTER"` in the videos repo. **Inter Tight / JetBrains Mono are NOT used in manim** — they belong only to HTML/poster assets. `font_size` ladder (4K canvas, `frame_height=8`): `120/96/90` hero · `72/60` headline · `48` (default) `/42/36` body · `30/24` caption/inline · `16` fine print. Pass integers from this ladder.
+
+Chrome (paper title, episode number, brand handle, scene dots) is pinned with `fix_in_frame()`, not an ffmpeg pad.
+
+---
+
+## 9. Audio sync (manimGL has no voiceover plugin — do it yourself)
+
+> **For the proven, shipped pipeline → see §13.** It supersedes the sketch below: one *continuous* ElevenLabs VO with character timestamps, scenes **speed-fit** to narration spans, and burned `.ass` captions. Use `scripts/pipeline/`. The notes below explain why.
+
+`manim-voiceover`'s `VoiceoverScene` is a **Manim CE plugin** and does NOT subclass manimGL's `InteractiveScene` — don't use it here. The entire `videos` corpus contains zero voiceover code (`grep voiceover` = 0 hits), so 3b1b records VO out-of-band and times animations to it. For an automated reels pipeline, do the DIY equivalent that *works on manimGL*:
+
+1. Generate one ElevenLabs clip per narration line, cache to `audio/lines/NN.mp3` (skip if exists → zero re-cost).
+2. Measure each clip's duration once (`ffprobe -show_entries format=duration` or `pydub`), store in a `dict`.
+3. Drive `run_time` from that duration in the scene:
+```python
+DUR = json.load(open("audio/durations.json"))   # {"l01": 2.4, "l02": 3.1, ...}
+
+# Beat: "Picture the attention matrix."
+self.play(FadeIn(matrix), run_time=DUR["l01"]); self.wait(0.3)
+# Beat: "Compression collapses every m columns."
+self.play(TransformFromCopy(matrix, comp), run_time=DUR["l02"]); self.wait(0.3)
+```
+4. Concatenate the line clips (with the small inter-beat gaps) and mux onto the rendered video with ffmpeg. Because each block's `run_time` equals its line's audio length, picture and voice stay aligned by construction.
+
+**TTS copy rules:** spell out acronyms with spaces ("M L P", "key value cache") so the engine reads letter-by-letter; spell out numbers for cadence ("eighty-seven cents"); the on-screen caption can still use the compact form. ElevenLabs SDK: export both `ELEVEN_API_KEY` and `ELEVENLABS_API_KEY`; if the key lacks `voices_read`, call the raw TTS endpoint with your `voice_id` directly (the SDK's `voices()` validation is what trips on that scope).
+
+---
+
+## 10. The zero-error gate (NON-NEGOTIABLE — the Prime Directive made concrete)
+
+Every video is nuclear (see the top of this file). This gate runs **twice**: once on the *script + planned visuals* before rendering, and once on the *rendered video* before shipping. Nothing publishes until both pass clean.
+
+A **claim** is anything a viewer could check, spoken OR on-screen OR captioned OR on the thumbnail: every number, ratio, label, model identifier, layer/expert count, benchmark, price, date, "first to X", and every quantity an axis or readout asserts.
+
+### Gate A — the claims ledger (before rendering)
+Build a table of **every** claim from the VO script + every planned on-screen number/label + captions + thumbnail. For each: grade **CONFIRMED** (with the exact primary-source quote + line/section), **WRONG**, or **UNVERIFIED**. Then: fix WRONG, soften UNVERIFIED (`≈`, "reportedly", "the released config", "see Table 1"), and **cut anything you cannot cite.** For 10+ claims, delegate to a subagent: read script + on-screen text → extract every checkable claim → verify against the primary source → CONFIRMED/WRONG/UNVERIFIED with the source line → literal edits.
+
+### Gate B — audit the RENDERED video (before shipping)
+The script being right is not enough — **a label or a dramatized number can still be wrong on screen.** Sample frames across the whole video (`ffmpeg -ss T -frames:v 1`, ~every 3–4s), **read each one**, and verify: on-screen numbers match the claims and each other; labels name the quantity correctly; captions match the VO word-for-word; the thumbnail's claims are true; and no title/transition is garbled. Distinguish a real error from a harmless mid-animation still (a counter ticking, a morph in progress) — but a *sustained* wrong frame ships as a wrong frame.
+
+### The four failure modes that actually shipped a wrong video (learn these by name)
+1. **Dramatized numbers.** "Stack **a thousand layers**" — the model was ~61 layers. *Never inflate a number for effect.* If the real number is undramatic, describe the phenomenon without a number ("layer after layer", "go deep enough"), don't invent one.
+2. **Mislabeled quantities.** A relevance score in [0,1] labeled "**q · k**" (a raw dot product, which would be in the hundreds). The concept was right, the *label* lied. Name on-screen quantities by what they actually are.
+3. **Scope overstatement.** "**Each weight** is reduced to four bits" — FP4 was only on the MoE expert weights + the indexer. Say exactly what the source says; "each/every/all" is almost always too broad.
+4. **Thumbnail hooks that aren't true.** "for free" when the model is open-weights but priced. A hook may compress, never falsify.
+
+### Standing rules
+- Decimal precision past the source reads fabricated (source says ">91%" → write ">91%", not "92.3%").
+- Config-specific values (top-k, layer counts, prices) are **not universal law** — anchor to the specific model/version ("V4-Pro", "Claude Opus 4.6") and note it's the released config.
+- **Date-drift:** model versions/prices change weekly in 2026+; re-verify within 48h of publishing.
+- If it's already posted and an error is found: write the corrected re-export AND a short, honest pinned-comment correction (own it; it builds trust).
+
+---
+
+## 11. Static carousels & posters (matplotlib / HTML — NOT manim)
+
+Carousels are static, so manim is the wrong tool; matplotlib + HTML are right. Use `scripts/carousel_template.html` (brand baseline, 1080×1350 slides) → `scripts/render_carousel.py` (weasyprint → pdftoppm), and `scripts/render_3d.py` for any earned static 3D PNG. **The same Laws apply where they can:** relative layout (CSS flex/grid, not absolute px), one color per concept, content-sized boxes, earned-3D-only (no faux-isometric cubes), 3 phone-readable annotations max. The matplotlib palette in `render_3d.py` is the manimGL palette; **`YELLOW` is `#FFFF00`** (the old `#F7D96F` was wrong).
+
+For the pixel discipline on a hand-placed matplotlib frame, still probe-render mid-scene frames and read them — but prefer building with relative transforms (`axes.transAxes` fractions, `arrange`-like helper functions) over absolute pixels.
+
+---
+
+## 12. Scripts in this skill
+
+- **`scripts/manim_scene.py`** — the real manimGL starter: `from manim_imports_ext import *`, `InteractiveScene`, a small self-arranging DSL, transform-driven beats, `self.frame.reorient` 3D, `set_backstroke`, `SurroundingRectangle`, beat-comment structure. **Copy and adapt; never write CE.**
+- **`scripts/helpers_template.py`** — the DSL pattern: a self-arranging `Mobject` subclass + a `show_*(scene, ...)` choreography verb, annotated with the recipe from Law 3.
+- **`scripts/pipeline/`** — the proven render-to-ship audio/caption/assembly pipeline (see §13): `vo_continuous.py`, `timing.py`, `build_captions.py`, `assemble.py`.
+- **`scripts/thumbnail_template.py`** — 9:16 thumbnail with the 1:1 / 4:5 safe-crop bands baked in (§13).
+- **`scripts/render_3d.py`** — matplotlib 3D for *static carousel PNGs only* (palette fixed).
+- **`scripts/carousel_template.html`** + **`scripts/render_carousel.py`** — static IG carousel pipeline.
+
+---
+
+## 13. The proven production pipeline (learned shipping reels)
+
+The Laws above are the craft; this is the assembly line that actually shipped a 2-minute manimGL reel end to end. **manimGL renders fine** — `pip install manimgl` (1.7.x), then `manimgl scenes.py SceneName -w --hd --video_dir out --file_name SceneName` writes a flat `out/SceneName.mp4` at 1080p. The `--file_name` flag is what keeps the output flat-named (so `assemble.py` finds `out/<Scene>.mp4`); without it manimGL nests under a media/quality subdir. To re-render one fixed scene, just re-run that one command + re-run `assemble.py` (timing/spans come from the VO and don't change). **The render → read-the-frame → fix loop is not optional** — sampling a frame (`ffmpeg -ss T -frames:v 1`) and actually *looking* at it caught a real overlap on nearly every scene.
+
+### Fast path to 3b1b density: vendor their transformer DSL
+For ML content, do NOT hand-build matrices and vectors. Copy `3b1b/videos/_2024/transformers/helpers.py` into the project as `tb_helpers.py`, switch its top import to `from manimlib import *`, and drop the few functions that need external datasets/images. You instantly get the authentic look: `NumericEmbedding(length=N)` (a column of value-colored numbers), `WeightMatrix(shape=(r,c))`, `EmbeddingArray`, `ContextAnimation` (curved attention rays), `value_to_color`, `show_matrix_vector_product`. Scenes built from these read like 3b1b; scenes built from bare cubes read like AI slop.
+
+### 3D vs flat — the decision that actually matters
+Earned-3D is real (Law 4), but 3D *hurts* some concepts. Hard-won rule:
+- **3D wins:** point clouds (a vast token field via `GlowDots`/`DotCloud`), `f(x,y)=z` surfaces (a loss landscape with descent paths), volumes that collapse (a KV-cache cube shrinking to 1/10), genuine vector spaces. Camera `reorient` + ambient drift.
+- **3D loses → use flat face-on instead:** any *stack of thin layers* (interleaved attention layers, a residual-layer tower). Viewed at an angle, thin wide slabs collapse into one solid block and the per-layer colors disappear. A flat, head-on striped panel reads instantly. Never 3D a stack.
+- **But don't let "flat" become monotony.** A reel whose scenes are all the same colored grid reads as slop regardless of correctness (real viewer note: *"a single block matrix throughout"*). Per reel, hit the density bar: **real numbers** (numeric matrices, an accumulating dot product) + **a real on-screen equation** + **at least one genuine earned-3D scene** (a deforming surface, a growing/collapsing tensor volume, a vector space). Rotate the visual primitive scene-to-scene. See the Law 4 counter-lesson for the copy-paste patterns.
+
+### Audio + captions + assembly (`scripts/pipeline/`)
+One **continuous** VO drives everything (manim-voiceover's `VoiceoverScene` is CE-only — don't use it):
+1. **`vo_continuous.py`** — ElevenLabs `/v1/text-to-speech/{voice}/with-timestamps` → `vo.mp3` + `vo_alignment.json` (per-character times). A single continuous read gives natural prosody and zero per-clip silence. Working config: `model_id="eleven_multilingual_v2"`, `voice_settings={stability:0.38, similarity_boost:0.85, style:0.20, use_speaker_boost:True}`; the endpoint returns base64 audio + a per-character start/end alignment you keep verbatim for the captions. The script joins paragraph breaks to single spaces, so write one paragraph per scene.
+2. **`timing.py`** — atempo-fit the VO to your length cap (ElevenLabs length varies run-to-run; *nudge tempo, capped ~1.12 so it stays human* — don't re-generate to chase a number, it burns credits; for a fixed-length series just set `TEMPO=1.0` and let the scenes speed-fit), scale the alignment, and emit each scene's narration **span** by matching an anchor phrase. **Anchor gotcha:** anchors match on words normalized to `[a-z0-9]` (lowercased, punctuation + hyphens stripped), so "grouped-query" becomes one token `groupedquery` and "down-project" becomes `downproject` — pick each scene's anchor as a short verbatim word-run that survives that normalization, and never lean on a hyphen as a word boundary.
+3. Render scenes `--hd`, then **`assemble.py`** — **SPEED-FIT** each scene's video to its span via `setpts` (time-scale, so nothing is cut and nothing freezes — *no dead air*). Keep factors 0.8–1.2×. **Two-sided rule:** rebuild any scene that plays **>1.28×** (rushed — trim it), AND enrich any scene that plays **<0.6×** (draggy — its VO span ≫ its animation): *add holds, a second emphasis pass, or an extra beat to raise the scene's native duration so the factor climbs back toward ~0.8* — never speed the VO up to fill the gap. `assemble.py` prints every factor; scan that list before shipping. Then concat → burn `captions.ass` → mux VO → loudnorm to −16 LUFS.
+4. **`build_captions.py`** — phrase-level `.ass` captions, char-offset-timed from the alignment (read `tempo` from `scene_spans.json` so captions and the tempo-fitted VO stay in sync — a mismatch desyncs them). Bottom-center, Inter Tight, semi-transparent box. **Keep all in-scene content above the bottom caption band** (y ≳ −2.7 at 1080p, the `CAP_FLOOR`) so captions never collide.
+
+### The VO copy register (human, professional, TTS-safe)
+- **Not robotic:** kill mechanical enumeration ("Bet one… Bet two… Bet three…"). One through-line, a real voice. Use the `worldbuilder-writing` skill.
+- **Not slangy either:** a polished technical-narrator register beats casual slang. *"almost counterintuitive"* not "almost cheeky"; *"a familiar danger"* not "a nasty habit"; *"the accuracy loss is negligible"* not "barely flinched".
+- **TTS landmines:** ElevenLabs read "V4" as *"deep 5 four"* — never make TTS speak a model version like "V4"; say "the latest model" or spell it out. Spell acronyms ("M H C") or use full words. Numbers like "1,024" and "128" read fine.
+
+### Thumbnail (`scripts/thumbnail_template.py`)
+Match the series: ONE bold 3-line headline (last line the accent color) + ONE hero visual + a serif (EB Garamond italic) payoff, on the dark dotted canvas. Build at **9:16 (1080×1920)** but keep the core (headline + hero + payoff) inside the **1:1 safe band y[420,1500]** (also inside 4:5 y[285,1635]); brand / eyebrow / CTA / footer live *outside* it. The template renders all three crops — verify the **1:1** (the IG-grid view) reads on its own.
+
+### The IG caption
+`worldbuilder-writing` method: open inside the reader's world with one concrete verifiable claim, ride a single leverage point (not a feature list), ground every claim with specifics. Keyword-dense for IG search, ≤2 paragraphs, ≤5 hashtags, **no em dashes**, no AI-slop phrases. Ship it twice: `ig-caption.md` (with a `# ` title line) and a plain `output/caption.txt` for copy-paste — strip the md header with `awk 'NR==1&&/^# /{next} NR==2&&/^$/{next} {print}' ig-caption.md > output/caption.txt`, then verify the `.txt` has **no em dashes** and **exactly 5** hashtags.
+
+---
+
+## Render-critique gotchas (add to this after every project)
+
+Bugs the frame-reading loop caught, with the fix — check these before re-rendering:
+
+| Symptom | Cause | Fix |
 |---|---|---|
-| Caption overlaps in-scene element | Layer 1 (structural) | Caption physically can't reach content rows |
-| Element at y=-3.0 in Manim coords (chrome zone) | Layer 3 (`assert_inside_safe`) | Bbox check fires |
-| Two text labels arrive simultaneously and stack | Layer 3 (`assert_no_overlap`) | Pairwise IoU check |
-| ffmpeg pad accidentally not applied | Layer 4 (color-variance) | Buffer zone has content → buffer std spikes |
-| Font fallback to Arial (different metrics → drift) | Layer 5 (preview) | Visible immediately |
-| Subtle text-on-text within content zone | Layer 4 with `--vlm` | VLM catches what CV misses |
-
-### Don't skip layers
-
-Each layer is cheap. Layer 1 is one ffmpeg flag change. Layer 3 is a 50-line helper module. Layer 5 is a 30-line shell script. Layer 4 is 100 lines of Python. The cost of NOT having them is the cost of every overlap bug shipped. We learned this the hard way across 5 iteration passes.
-
----
-
-## Brand Baseline (locked across all ml-content output)
-
-Differentiation happens *within* this baseline, not by changing it.
-
-### Canvas
-
-```css
---bg:        #0E1014   /* slate near-black */
---surface:   #14171F   /* raised panels (sparingly) */
---grid:      #1A1F2B   /* hairline borders + dot grid */
---hairline:  #2A2F3A   /* subtle dividers */
-```
-
-Always dark canvas. ml-content does not use light themes.
-
-### Text grays
-
-```css
---text:      #ECECEC
---body:      #A8AEB8
---mute:      #5A6175
-```
-
-### Manim canonical color palette (locked, from Manim CE)
-
-```css
---blue:    #58C4DD
---red:     #FC6255
---yellow:  #F7D96F
---green:   #83C167
---teal:    #5CD0B3
---purple:  #9A72AC
---orange:  #FF862F
---gold:    #F0AC5F
-```
-
-### Color role assignment (sacred — never violate)
-
-- **Orange** — hero / "look here" / the project-specific innovation
-- **Yellow** — single-use transition / aha pulse / one moment per video
-- **Blue** — data flowing / process / iteration
-- **Green** — correct / parity / converged answer
-- **Red** — error / wrong / caveat
-- **Purple** — secondary structure / supporting role
-- **Mute grey** — de-emphasis / chrome
-
-### Typography stack (locked)
-
-```css
---math:      'CMU Serif', 'EB Garamond', serif
---body-font: 'Inter Tight', 'Inter', -apple-system, sans-serif
---mono:      'JetBrains Mono', 'IBM Plex Mono', monospace
-```
-
-Three weights only: 400 (body), 500 (eyebrows / mono), 600 (display / bold).
-
-### Type ramp for 1920×1080
-
-| Element | Family | Weight | Size |
-|---|---|---|---|
-| Display hero | Inter Tight | 600 | 96–110 |
-| Section headline | Inter Tight | 600 | 56–72 |
-| Math equation (hero) | CMU Serif italic | — | 44–72 |
-| Math equation (inline) | CMU Serif italic | — | 24–32 |
-| Sub / caption | Inter Tight | 400 | 22–28 |
-| Body | Inter Tight | 400 | 18–24 |
-| Eyebrow / chrome | JetBrains Mono | 500 | 17–22 (uppercase, letter-spacing 0.22em) |
-| Hero number | Inter Tight | 600 | 180–240 |
-| Mono labels | JetBrains Mono | 500 | 14–18 |
-
-### Chrome (locked per video)
-
-Top-left mono mute: paper-title strip with arXiv-style ID.
-Top-right mono orange: paper number ("PAPER · 01") or episode number.
-Bottom-left mono mute: brand handle (@thtskaran).
-Bottom-right: N-dot scene indicator (current = orange, others = mute).
-
-Chrome stays static through every frame. Only the dot indicator changes per scene.
-
----
-
-## Hook Construction (Worldbuilder Discipline)
-
-Writing layer for ml-content. Treats writing as applied psychology, not self-expression.
-
-### Three things to model before writing
-
-**1. Audience persona** — list 1–3 personas. For each: atomic units they nod at, what can break their head, what they reflexively reject.
-
-**2. Leverage point** — the one specific thing that, said aloud, makes the audience pause. Always concrete + numeric + slightly weird.
-
-Examples that worked:
-- *"DeepSeek built two readers of the past. One reads carefully. One skims. Together they read a million tokens at one tenth of the memory."*
-- *"There's a single neuron in OLMoE-1B-7B that fires only on closing LaTeX brackets. F1 = 1.00."*
-
-**3. Reaction map** — predict who reacts how (researchers / practitioners / skeptics). Optimize for two of three.
-
-### The four hook principles (locked)
-
-1. **Lead with the most specific weird artifact in the paper.** Generality is for the body.
-2. **Pair the concrete with one number that makes you do a double-take.** F1 = 1.00. +12.8%. 4.7×.
-3. **Pre-empt "so what?" with one sub-line that hints at the broader claim.** Hook can be specific; sub has to imply scope.
-4. **Avoid dunking even when the temptation is highest.** Frame as "the unit shifted," not "your tools are obsolete."
-
-### Hook tier list
-
-- **Tier 1** — would over-perform. Picks up multiple atomic units, breaks one prior, lands the most specific weird artifact.
-- **Tier 2** — strong but conventional.
-- **Tier 3** — strong stat openers. Headline number alone.
-- **Tier 4** — different register (alignment, safety, infra ops).
-- **Tier 5** — pocket / provocations / caption.
-
-### Copy hygiene
-
-- **No em dashes.** Use periods or commas. Em dashes feel AI-coded.
-- **No "genuinely", "honestly", "straightforward".** Filler.
-- **Vary sentence length.** Short. Then a longer one that builds in. Then short.
-- **Match clause shape to claim shape.** "Two stages. One Lagrangian. One XGBoost." reads like the method.
-- **Don't invent facts.** If unsure, soften ("≈", "reportedly", "see Table 1") or ask.
-- **Use specific names, not generic categories.** "OLMoE-1B-7B" not "an MoE model."
-- **Mono for IDs.** `OLMoE-L15-E17`, `arXiv 2604.14853` set in JetBrains Mono.
-- **Spell out shorthand in VO.** "key-value cache" not "KV cache" when spoken (TTS). "Compressed Sparse Attention" not "CSA" when spoken. Acronyms read aloud are jarring; full names land.
-- **Acronyms get spaces in TTS script** so the TTS reads letter-by-letter: "M L P" not "MLP" (the latter slurs as "mlp").
-- **Numbers spelled out in VO** for cadence: "eighty seven cents" not "$0.87".
-
-### Caption structure
-
-```
-[Hook from Tier 1 or 1C]
-
-[3–4 lines of body — atomic units → reframe → number → action item]
-
-[Optional: provocation or open question]
-
-[Citation: paper title · authors · arXiv ID]
-
-[Hashtags — 5 max]
-```
-
-Total: 80–120 words. Captions over 200 words don't get read on IG.
-
----
-
-## Annotation Language (phone-readable)
-
-Locked spec for any annotation drawn on a 3D chart, 2D chart, diagram, or video frame.
-
-### Locked rules
-
-1. **Typeface:** Inter Tight 600 (or DejaVu Sans 600 fallback).
-2. **Font size:** 22–32pt at rendering DPI. Scale up for 4K (60+).
-3. **Background:** rounded pill — rectangle filled with role color.
-4. **Text color:** `BG` (dark canvas) — high contrast on the pill.
-5. **Arrow:** lw 2.4, `arrowstyle="-|>"`, `connectionstyle="arc3,rad=0.12"`.
-6. **Maximum:** 3 annotations per chart.
-
-### Color = role
-
-| Role | Color |
-|---|---|
-| Method / project's contribution | ORANGE |
-| Hero highlight | ORANGE (saturated) |
-| Process / iteration | BLUE |
-| Correct / parity | GREEN |
-| Wrong / caveat | RED |
-| Single-use transition | YELLOW |
-| Diminishing / secondary | PURPLE |
-| De-emphasis / chrome | MUTE GREY |
-
-Don't introduce new colors for new annotations.
-
-### Standard pill placements
-
-For matplotlib (axes-fraction coordinates):
-
-| Position | (fx, fy) |
-|---|---|
-| Top-left | (0.18, 0.84) |
-| Top-center | (0.50, 0.92) |
-| Top-right | (0.82, 0.84) |
-| Bottom-left | (0.18, 0.20) |
-| Bottom-right | (0.82, 0.20) |
-
-If 3 pills, prefer corners. If 1 pill, prefer top-center.
-
-### Common annotation mistakes
-
-1. **Pill too small** — fontsize=12 is invisible at IG resolution. Always 22+.
-2. **Pill text too long** — 7 words max.
-3. **Arrow too thin** — lw=1 disappears. Always 2.4.
-4. **Arrow color ≠ pill color** — visual disunity.
-5. **More than 3 pills** — clutter.
-6. **In-3D-plane text via `ax.text(x, y, z, ...)` for titles** — gets projected with perspective. Use HTML / fixed-in-frame overlay for titles.
-7. **Pill text not centered** — break left/right alignment if not deliberate.
-8. **Pill collides with axis labels** — leave 60px buffer.
-
----
-
-## Composition with other skills
-
-| Need | Use alongside |
-|---|---|
-| Paper PDF as final deliverable | `academic-paper` instead |
-| Persuasive caption | `worldbuilder-writing` for caption, ml-content for visuals |
-| More design references | `pro-graphic-designer` discipline, constrained by ml-content brand |
-| Fact-check at scale | `autonomous-research` agent |
-| Find the right paper | `autonomous-research` |
-| Native pptx slide deck | `pptx` instead — ml-content does video/PNG only |
+| `Only VMobjects can be passed into VGroup` | 3D `Cube`/`Prism` are `SGroup`s, not VMobjects | put 3D solids in `Group(...)`, not `VGroup(...)` |
+| `'Cube' object has no attribute 'set_stroke'` | 3D surfaces have no stroke | use `.set_color(c, opacity)` / `.set_shading(...)` |
+| A `fix_in_frame` `Integer` renders **gigantic** | manual `add_updater(set_value)` on a fixed decimal | animate with `ChangeDecimalToValue`, no manual updater |
+| `could not broadcast (15,3) into (53,3)` | two animations on one `DecimalNumber` in one play (move + value change) | move via an `add_updater(next_to)`, change value with `ChangeDecimalToValue` |
+| Stacked 3D layers look like a solid block | thin slabs viewed top-down hide their faces | flat face-on (see 3D-vs-flat above) |
+| Label sits *on* a curve / another element | placed in an occupied region | move it to a measured-empty region; `set_backstroke(BLACK, 5)` |
+| A risen/moved mobject covers a label | element animated over fixed text | don't move it over the label, or move the label out first |
+| Captions overlap content | in-scene mobject below the caption band | keep content above `CAP_FLOOR` (y ≳ −2.7) |
+| A scene plays rushed in the final | scene video ≫ its narration span (speed-fit >1.28×) | rebuild that scene shorter; don't rely on speed-fit alone |
+| **Garbled title at a scene's title swap** | `FadeTransform(old_title, new_title)` morphs two *different* texts at the **same** position → ~0.5s of scrambled, illegible glyphs (looks like a render bug when paused) | never morph two unrelated titles in place. Do a clean **`FadeOut(old)` then `FadeIn(new)`**, or fade out/in with opposite `shift=`. Same for any in-scene annotation that swaps text (a label that becomes another). |
+| **Two texts overlap mid-cross-fade in the FINAL only** (looked fine in the silent render) | a `FadeOut(a)` + `FadeIn(b)` at the **same spot** in **one** `self.play` — **speed-fit stretches** it (a 1.5× slow scene makes both co-exist ~50% longer), so the brief overlap becomes a readable garble | **sequence them inside the one play with non-overlapping `time_span`**: `FadeOut(a, time_span=(0,0.5))`, `FadeIn(b, time_span=(0.5,1.0))` (fractions of `run_time`). Survives any stretch. |
+| **HUD equation/label collides with the burned captions** | a `fix_in_frame()` `Tex`/label placed with `to_edge(DOWN)` sits at y≈−3.4, *inside* the caption band | place HUD math at y ≈ −2.4 (above `CAP_FLOOR` −2.7); put step-labels for a 3D scene in the clear band *above* the surface, not below it |
+| On-screen number is wrong even though the script is right | a label/number hand-set in a scene, never grounded | Gate B (§10): every on-screen number/label is a claim — verify it on the rendered frame, not just in the VO |
+| **A small/exact `WeightMatrix` shows a phantom "…" dots row or column** | `WeightMatrix`/`NumericEmbedding` default to `ellipses_row=-2, ellipses_col=-2` (a deliberate ellipsis to imply a big array) | pass `ellipses_row=None, ellipses_col=None` for any matrix you want shown in full. For a 1-wide `NumericEmbedding` the col-ellipsis can blank the whole column — set `ellipses_col=None`, or build vectors from a plain cell-column helper |
+| **A near-identity / small-valued `WeightMatrix` renders dark, low-contrast** | default `value_range=(-9.9, 9.9)` maps a value of `1.0` to ~10% intensity | pass a tight `value_range` (e.g. `(-1.5, 1.5)`) + explicit `high_positive_color=`/`high_negative_color=` so the diagonal reads bright and off-diagonals stay dim |
+| **An auditor flags a matrix-product / dot-product entry as "wrong" on a sampled frame** | `show_matrix_vector_product` and dot-product accumulation animate the running **partial** sum — a mid-frame entry is a correct intermediate, not the full product | only the settled END/hold frame must equal the full product; verify *that* frame, not a mid-accumulation still. (Gate B: distinguish transient from sustained — a partial sum counting up is not an error) |
+| **`timing.py`: "anchor not found"** | the anchor isn't a verbatim contiguous word-run after `[a-z0-9]` normalization (hyphens merge tokens) | re-pick the anchor from the exact VO words: "grouped-query"→`groupedquery`, "down-project"→`downproject` |
+| **A scene plays draggy in the final (speed-fit < 0.6×)** | the scene's narration span is much longer than its animation | enrich the scene (add holds / a second emphasis pass / an extra beat) to raise native duration — do NOT speed the VO up |
 
 ---
 
@@ -947,365 +537,72 @@ If 3 pills, prefer corners. If 1 pill, prefer top-center.
 
 ```
 NN-short-slug/
-├── paper-summary.md
-├── related-work.md
-├── discussions.md
-├── brainstorm.md
-├── README.md
-├── 3d-audit.md
-├── moodboard.md
-├── design-spec.md
-├── script.md
-├── audio/
-│   ├── vo_script.txt
-│   ├── vo.mp3
-│   └── vo_alignment.json
+├── paper-summary.md  related-work.md  discussions.md  moodboard.md   # lean recon
+├── beat-sheet.md                                                     # ordered named beats
+├── tb_helpers.py                                                     # vendored 3b1b transformer DSL (§13)
+├── helpers.py                                                        # project-specific DSL (Law 3)
+├── scenes.py                                                         # thin InteractiveScene files
+├── custom_config.yml                                                # black canvas (§8)
+├── .env                                                             # ELEVENLABS_API_KEY, ELEVEN_VOICE_ID
+├── audio/  vo_script.txt  vo.mp3  vo_alignment.json  scene_spans.json
 ├── captions.ass
-├── build_captions.py
-├── ig-caption.md
-├── output/
-│   └── final.mp4
-└── (one of:)
-├── manim/                 # if Manim pipeline (default)
-│   ├── manim_scenes.py
-│   ├── INSTALL.sh
-│   ├── RENDER.sh
-│   └── media/
-└── render.py + frames/    # if matplotlib pipeline (fallback)
-```
-
-Naming: `01-deepseek-v4`, `02-asynctls-sparse-attention`, etc.
-
----
-
-## Quick start for a new video
-
-```
-1. Pick paper. Note arXiv ID.
-2. Stage 0: write the AHA sentence on paper. If you can't, defer.
-3. Create project folder.
-4. Stage 1: write the 5-file recon bundle. Two-pass internet recon.
-5. Stage 2: write 3d-audit.md and moodboard.md.
-6. Stage 3: lock design-spec.md (including safe-zone grid).
-7. Choose pipeline:
-   - Manim (default): write manim_scenes.py + INSTALL.sh + RENDER.sh.
-   - Matplotlib (fallback): write render.py.
-8. Render audio via ElevenLabs. Align with whisper.
-9. Stage 4 build:
-   - Manim: render-critique-render loop (3–8 cycles).
-   - Matplotlib: pixel-perfect probe-patch loop (3–8 cycles).
-10. Caption: build_captions.py against whisper alignment.
-11. Stage 5: grounding pass (subagent for 10+ claims).
-12. Write IG caption. Mux final. Ship.
+├── thumbnail.py   ig-caption.md
+└── out/FINAL.mp4
 ```
 
 ---
 
-## Quick start for a new carousel (static PNGs for IG)
+## Appendix — copy-paste manimGL idioms (verbatim grammar)
 
-(Carousels are static, not animated; matplotlib is the right tool regardless.)
-
-```
-1. Stages 0-3 as above.
-2. carousel.html using the brand baseline.
-3. render_3d.py for any earned 3D PNGs.
-4. render_carousel.py via weasyprint + pdftoppm.
-5. Stage 5 grounding pass.
-6. Write caption. Post.
-```
-
----
-
-## Appendix A — Bedrock Manim grammar idioms (cheat sheet)
-
-Copy-paste blocks from real 3b1b/videos code (extracted across `attention.py`, `nn/part1.py`, `fourier.py`, `embedding.py`).
-
-### Ensemble entrance
 ```python
-self.play(LaggedStartMap(
-    FadeIn, things, shift=0.5 * UP, lag_ratio=0.25,
-))
-```
+# Ensemble entrance — always staggered, small drift
+self.play(LaggedStartMap(FadeIn, things, shift=0.25 * DOWN, lag_ratio=0.1))
 
-### Math morph (his actual idiom — NOT TransformMatchingTex)
-```python
-new_eq = Tex(R"\text{cost} = L \times \tfrac{L}{m}")
-new_eq.move_to(old_eq)
-self.play(ReplacementTransform(old_eq, new_eq), run_time=1.5)
+# Born-from morph (the workhorse — source persists)
+self.play(TransformFromCopy(data_column, x_symbols), run_time=2)
 self.wait()
-```
 
-### Substring rectangle (highlight one variable in an equation)
-```python
-equation = Tex(R"\text{Attention}(Q, K, V) = \text{softmax}\left({K^T Q \over \sqrt{d_k}}\right) V")
-q_rect = SurroundingRectangle(equation["Q"][0], color=YELLOW)
-self.play(ShowCreation(q_rect))
-```
+# Highlight one symbol in an equation
+eq = Tex(R"\text{softmax}\left(\frac{K^T Q}{\sqrt{d_k}}\right)V")
+self.play(FlashAround(eq[R"\sqrt{d_k}"], time_width=1.5, run_time=2))
 
-### 3D camera reorient (2024 modern grammar)
-```python
-self.frame.animate.reorient(
-    -179, 19, 179,         # theta, phi, gamma
-    (2.49, 1.96, 0.4),     # center
-    4.76,                  # height
-).set_anim_args(run_time=5)
-```
+# Content-sized box (never hand-sized)
+box = SurroundingRectangle(label, buff=SMALL_BUFF).set_stroke(YELLOW, 2)
 
-### Ambient drift (for long contemplative beats)
-```python
-self.frame.add_ambient_rotation(1 * DEGREES)
-self.wait(15)  # the drift makes the wait feel alive
-```
+# Snap many objects into a new arrangement with no hand coords
+grp.target = grp.generate_target()
+grp.target.arrange(RIGHT, buff=0.15).next_to(anchor, DOWN, buff=MED_LARGE_BUFF)
+self.play(MoveToTarget(grp))
 
-### Slot-machine number counter
-```python
-val = ValueTracker(100.0)
-num = always_redraw(
-    lambda: Text(f"{int(val.get_value())}%",
-                 font="Inter Tight", weight="BOLD",
-                 color=ORANGE, font_size=200).move_to(target)
-)
-self.add(num)
-self.play(val.animate.set_value(10.0), run_time=0.6,
-          rate_func=rate_functions.ease_out_cubic)
-```
-
-### The "aha" reveal staging
-```python
-# setup is multiple small plays...
-self.play(FadeIn(setup_a)); self.wait(0.3)
-self.play(FadeIn(setup_b)); self.wait(0.3)
-self.play(FadeIn(setup_c)); self.wait(0.3)
-
-# ...the aha is one focused play at longer run_time + camera shift, then LONG wait
+# The aha reveal — one play: camera + born-from + cascade, then breathe
 self.play(
-    ReplacementTransform(setup_b, payoff),
-    self.frame.animate.reorient(-110, 10, 110, payoff.get_center(), 6.72),
-    run_time=10,
+    self.frame.animate.reorient(-110, 12, 0, payoff.get_center(), 6.7),
+    TransformFromCopy(setup, payoff, time_span=(1.5, 3)),
+    run_time=3,
 )
-self.wait(3.0)  # let the viewer breathe
-```
+self.wait(2)
 
-### Curved highlight rays (custom ContextAnimation pattern, from `_2024/transformers/helpers.py`)
-```python
-self.play(ContextAnimation(
-    target_word, source_words,
-    strengths=[1, 1],
-    path_arc=150 * DEGREES,
-))
-```
+# Real 3D hold — never static
+self.frame.add_ambient_rotation(0.5 * DEG)
+self.wait(8)
+self.frame.clear_updaters()
 
-### Per-character color via zip (visually link math to geometry)
-```python
-for part, vect in zip([em, ew, ek, eq], [man_vec, woman_vec, king_vec, queen_vec]):
-    part.set_fill(vect.get_color())
-```
+# Animated number driving dependents
+tracker = ValueTracker(100.0)
+num = DecimalNumber(0).add_updater(lambda m: m.set_value(tracker.get_value()))
+self.play(tracker.animate.set_value(10.0), run_time=2)
 
-### Two-color paired concepts
-```python
-colors = [YELLOW, TEAL]              # Q, K, V style
-# or
-colors = [BLUE_B, RED_B]             # male/female style
-# or
-colors = [BLUE_C, BLUE_D, GREEN]     # gradient strength
-```
-
-### Section-comment teleprompter
-```python
+# Section-comment teleprompter (each block ≈ one narration sentence)
 def construct(self):
-    # Setup the network
+    # Add the sentence
     ...
-    self.play(...); self.wait()
-
-    # Show the input
+    self.play(LaggedStartMap(FadeIn, words, lag_ratio=0.25)); self.wait()
+    # Box the adjectives
     ...
-    self.play(...); self.wait()
-
-    # The reveal — explain why
+    self.play(LaggedStartMap(DrawBorderThenFill, adj_rects)); self.wait()
+    # The reveal — why this works
     ...
-    self.play(..., run_time=8); self.wait(3)
+    self.play(..., run_time=3); self.wait(2)
 ```
 
-### Pi creature (still valid for explainer videos in 2024+)
-```python
-randy = Randolph().to_corner(DOWN + LEFT)
-self.play(randy.change("pondering", target_mob))
-self.play(randy.says("Wait, why does this work?", mode="confused"))
-self.play(randy.debubble(mode="hooray"))
-```
-
----
-
-## Appendix B — Pacing reference (Grant's actual numbers)
-
-From counting `self.play(...)` and `self.wait()` calls across 4 iconic scene files (attention.py 4093 LOC, nn/part1.py 4664 LOC, fourier.py 4309 LOC, embedding.py 3047 LOC):
-
-| Metric | Median | Note |
-|---|---|---|
-| `self.play()` per file | ~220 | A 20-minute video has ~220 distinct beats |
-| `self.wait()` per file | ~140 | About one wait per 1.5 plays |
-| Default `wait()` (bare) | 60-70% of all waits | The 1-second metronome |
-| `wait(2)` | 20-30% | Beat after a reveal |
-| `wait(5)` | rare, reserved | After a 3D reorient |
-| `wait(10)` to `wait(20)` | very rare, reserved | After the AHA |
-| `run_time=2` | modal animation length | Default heartbeat |
-| `run_time=5-10` | reserved | For the AHA scene |
-| `run_time=15-30` | very rare | Meditative sweeps (Fourier winding, 3D camera arcs) |
-
-For a 2-minute Instagram explainer: scale these down. Target **~40 plays, ~25 waits**. The reveal scene still gets `run_time=5-10` even at IG scale.
-
----
-
-## Appendix C — The five 3b1b psychology rules (copy these into every brainstorm.md)
-
-1. **Never start without a pre-built AHA.** Project doesn't begin until you have it.
-2. **Open with a crime scene, not a definition.** Mystery-novel framing. Concrete, weird, surprising.
-3. **Intuition first; formalism as relief.** The equation arrives when the viewer already wants it.
-4. **Every animation reinforces narration, never competes with it.** Cut anything that's motion-for-motion's-sake.
-5. **Trust the niche. Trust the viewer.** Go deeper than feels safe.
-
-These five rules are the worldbuilder lens for ML video content. Bake them into the recon bundle.
-
----
-
-## Appendix D — Failure modes observed in practice (and how to catch them)
-
-| Failure | Cause | Fix |
-|---|---|---|
-| Caption overlaps in-scene text | Tried to coordinate caption position via code discipline alone | **Layer 1 structural separation.** Manim renders smaller (e.g. 1920×940), ffmpeg pads bottom strip for captions. Camera can't reach the strip. |
-| Chrome ("PAPER · 01") overlaps content title | Chrome too tall + content too high; coordinate-based gap drift | Tighten chrome to fontsize ≤18pt; `to_corner(buff>=0.4)`; `assert_inside_safe()` with `top<=2.85` in 940-tall frame |
-| Hero number cut off at edge / spills out of chip | Hardcoded text width didn't match rendered metrics | Use `.next_to()` + `.arrange()` instead of `.move_to([x,y,z])`. Build pills/chips via `SurroundingRectangle(text, buff=...)` so the box sizes to content, not vice-versa. |
-| Element overflows panel in matplotlib | Conservative `char_w` constants drift across fonts | Pad +48px on pill width; use the `text_width()` helper, always add +24px horizontal margin |
-| Two text labels arrive at same time and stack | Used `self.play(FadeIn(a), FadeIn(b))` instead of staggering | Use `LaggedStart(FadeIn(a), FadeIn(b), lag_ratio=0.5)`. Grant uses `LaggedStartMap` 74× in `attention.py` alone. |
-| Caption fires at wrong time (anchor mismatch) | Caption anchor word has multiple occurrences | Use occurrence index (e.g. `"holds"` 2 not 1). With manim-voiceover, the issue disappears — each VO line owns its own SRT timing. |
-| Pacing too fast ("AI slop frenetic") | Animation `run_time < 0.4s`, holds `< 0.3s` | Lengthen animations to 0.5-0.6s, holds to 0.5-1.0s. Grant's metronome is `self.wait()` (1.0s default) after every play. |
-| Date-drifted claim | Compared to model version now superseded | Anchor every model claim to a specific version. Re-verify within 48hrs of publish. |
-| Acronym mispronounced by TTS | Used `"CSA"` instead of `"C S A"` or full name | Spell out acronyms in TTS script. Spaces force letter reading. Better: write `"Compressed Sparse Attention"` in full and let captions use the acronym. |
-| Manim font fallback to Arial | Pango couldn't find Inter Tight | Install fonts system-wide (`~/.local/share/fonts/` on Linux, `~/Library/Fonts/` on Mac). Run `fc-cache -fv`. |
-| Render time too long | Re-rendering everything when only one scene changed | Use Manim's partial movie file cache. Only re-render affected scenes via `manim --disable_caching ... S0X`. |
-| MSER text detector reports 57k overlaps | MSER detects the same character at multiple scales as separate "regions" | **DO NOT use MSER for layout validation.** Use color-variance per zone (Layer 4 in the Five-Layer Defense) or a vision-LM. |
-| ElevenLabs `AuthorizationError` | SDK env-var pickup is unreliable | Set both `ELEVEN_API_KEY` and `ELEVENLABS_API_KEY`. Call `elevenlabs.set_api_key(...)` explicitly in Python. |
-| ElevenLabs `missing voices_read permission` | Plugin's `__init__` calls `voices()` to validate `voice_id` | Either regenerate key with `voices_read`, or monkey-patch `voices()` to return a stub list containing only your `voice_id`. |
-| `pip install manim-voiceover[transcribe]` fails on `openai-whisper` | `pkg_resources` missing | `pip install --upgrade setuptools wheel` first. Better: pass `transcription_model=None` to ElevenLabsService — skips the whole transcription path. |
-| `Error: No such option '--subcaptions'` from manim CLI | Plugin auto-emits SRT when `create_subcaption=True` (default). No flag. | Just don't pass `--subcaptions`. |
-| **Validator's HARD buffer-zone failures on every frame even though `config.pixel_height=940` is set in Python** | **Manim's quality presets (`-ql`, `-qm`, `-qh`, `-qk`) OVERRIDE Python config for resolution + fps.** With `-qh`, scene mp4s render at 1920×1080@60fps no matter what your `config.pixel_height` says. Output dir name `media/videos/manim_scenes/1080p60/` proves it. ffmpeg pad then becomes a no-op and captions burn over content. | Use `-r WIDTH,HEIGHT --fps N` explicitly. The `-r` flag wins over quality presets. Strip all `-q*` flags from render commands. |
-| ffmpeg pad puts content in wrong location | `pad=W:H:X:Y` means "input video positioned at (X,Y) in the new canvas" | `pad=1920:1080:0:0` puts content at top-left, pad at bottom. To put content at bottom and pad at top, use `pad=1920:1080:0:140`. |
-| Caption fontsize too small at 4K | Caption FontSize in ASS doesn't auto-scale with PlayResY | Set `PlayResX` and `PlayResY` in the ASS header to match the final mp4. Or use libass `force_style` and pre-compute pt size = `desired_px * 72 / 96`. |
-
-Add to this table after every project. Failure modes compound; named failures don't.
-
----
-
-## Appendix E — Lessons from programmatic-video tools (Remotion / Motion Canvas / Konva)
-
-We did the layout work for ml-content using Manim's hand-coordinate placement and kept hitting overlaps. Research into how other programmatic-video tools (Remotion, Motion Canvas, Konva, Vizrt) solve the same problem produced five borrowable patterns. Apply them when authoring new content.
-
-### Pattern 1 — `AbsoluteFill` zoning + safe-zone constants
-
-Remotion ships `<AbsoluteFill>` — a `<div>` that's `position:absolute; inset:0; flex column`. Every scene is built by stacking AbsoluteFills, intentionally overlapping by DOM order.
-
-The **community standard for 9:16 Reels/TikTok safe zones** that emerged on Remotion (from the `neversight/remotion-ads` skill spec):
-
-> "All text within safe zones (80px+ from edges) — No critical content in top 285px — No critical content in bottom 400px — Text minimum 40px font size — Logo visible in center 1080×1080 (grid thumbnail)."
-
-For Manim/ml-content's 16:9 frames the analogous safe constants are: chrome bands at top 80px + bottom 175px, content in y_pixel 80-905, caption strip 1020-1080. These numbers are LOCKED — do not improvise.
-
-### Pattern 2 — Measure text BEFORE you render it (Remotion's `fitText`)
-
-Remotion has `@remotion/layout-utils`: `fitText`, `fitTextOnNLines`, `measureText`, `fillTextBox`. They exist because **CSS layout can't size text correctly if the font isn't loaded** — silent overflow happens otherwise. Their best-practices doc warns:
-
-- **`validateFontIsLoaded: true`** — if measurement uses the fallback font, throw.
-- Match every font property between measurement and render (family, size, weight, letterSpacing, fontVariantNumeric, textTransform).
-- Avoid `padding`/`border` on measured text — use `outline` instead so `box-sizing` doesn't shrink the container.
-
-For Manim/matplotlib, the analog is: before placing a `Text(...)`, compute its `.width` and verify it fits inside the panel. If not, shrink the font (binary search) or break the text. Helpers added to `layout_guards.py` should include a `fit_text(text, max_width, font_size_cap)` that does this.
-
-### Pattern 3 — Opt-in layout root + cardinal anchors (Motion Canvas)
-
-Motion Canvas's killer move: a `<Rect>` is a normal node UNTIL you add `layout`. Then Flexbox controls children's sizes and positions:
-
-```jsx
-<Rect layout direction="column" gap={40} padding={60} width={1920}>
-  <Txt fontSize={72}>Title</Txt>
-  <Circle width={320} height={320} />
-</Rect>
-```
-
-Every node exposes **reactive cardinal-direction signals**: `top()`, `bottom()`, `left()`, `right()`, `topLeft()` ... that are *live* — when the target moves, dependent positions update automatically. Compare:
-
-```jsx
-// Motion Canvas — reactive, follows the rect through rotation
-<Rect ref={small} size={50} right={big().left} />
-
-// Manim — one-shot snapshot, breaks if `big` moves later
-small.next_to(big, LEFT)
-```
-
-The borrow: when authoring a Manim scene, **declare relationships once at construct time, even if Manim won't reactively update them**. Then if you need to move `big` later in the same scene, also call `small.next_to(big, LEFT)` again. Don't hardcode `small.move_to([x, y, 0])` — that decouples them.
-
-### Pattern 4 — AABB collision check (Konva)
-
-Konva's collision-detection sandbox is 4 lines of axis-aligned bbox intersection:
-
-```js
-function haveIntersection(r1, r2) {
-  return !( r2.x > r1.x + r1.width  || r2.x + r2.width  < r1.x ||
-            r2.y > r1.y + r1.height || r2.y + r2.height < r1.y );
-}
-```
-
-This is exactly what our `layout_guards.assert_no_overlap()` does. We've had it since pass 4; the lesson is **call it at end of every `construct()`**, not just optionally. Make it a render-time guard, not a comment.
-
-### Pattern 5 — Templates + named field substitution (Vizrt broadcast CG)
-
-Vizrt Template Builder treats every lower-third / overlay as a "scene with named field IDs." Operators fill text fields; the scene's pre-designed layout reflows around them. **Overlap is impossible** because the scene designer pre-placed every variant.
-
-The Manim equivalent: when you have 10 chip-style boxes (e.g. the price chips in our payoff scene), write a single `chip_row(items)` factory function with explicit `arrange(RIGHT, buff=0.4)` plus a stroke-color parameter per item. Don't hand-position each chip with `move_to([cx, cy, 0])`. The factory is the template; the items list is the fields.
-
-### Synthesis: when to use which
-
-| Pattern | When to use | Effort |
-|---|---|---|
-| 1 — Safe-zone constants | Always. Lock the y_pixel band reservation at project start. | ~5 lines of constants |
-| 2 — Measure before render | Any text that depends on dynamic data (model names, numbers) | ~50 lines for `fit_text()` helper |
-| 3 — Cardinal anchors | Any scene with 3+ elements that depend on each other's positions | Refactor: `.next_to()` everywhere instead of `.move_to(...)` |
-| 4 — AABB collision check | Every scene, end of every `construct()`. Use `LAYOUT_GUARDS_SOFT=1` first | Already in `layout_guards.py` |
-| 5 — Template factories | Repeating element groups (chips, icons, ranks) | One factory function per pattern |
-
-**What we deliberately do NOT borrow:**
-- A full Cassowary/kiwisolver constraint engine. No programmatic video tool has shipped one successfully; Motion Canvas's reactive signals get 90% of the value at 10% of the complexity. Reactive bindings > linear constraints.
-- HTML/CSS-as-source (Remotion, Helios). Manim's `MathTex` and 3D primitives have no clean web analog. The migration cost would dwarf the layout benefit.
-
-### Sources
-
-- Remotion AbsoluteFill: https://www.remotion.dev/docs/absolute-fill
-- Remotion layout-utils best practices: https://www.remotion.dev/docs/layout-utils/best-practices
-- Remotion fitText: https://www.remotion.dev/docs/layout-utils/fit-text
-- Motion Canvas layouts: https://github.com/motion-canvas/motion-canvas/blob/main/packages/docs/docs/getting-started/layouts.mdx
-- Motion Canvas positioning: https://github.com/motion-canvas/motion-canvas/blob/main/packages/docs/docs/getting-started/positioning.mdx
-- Konva collision: https://konvajs.org/docs/sandbox/Collision_Detection.html
-- Vizrt Template Builder: https://documentation.vizrt.com/template-builder-guide-3.5.pdf
-- Manim → Motion Canvas migration: https://slama.dev/motion-canvas/introduction/
-- Community safe zones: https://lobehub.com/skills/neversight-skills_feed-remotion-ads
-
----
-
-## Appendix F — The brainstorm that produced the Five-Layer Defense
-
-When this skill kept producing layouts with overlaps despite the "Pixel-perfect lock" rule, the diagnosis was: code discipline alone CANNOT enforce non-overlap. The failure modes are:
-
-1. **Drift.** Fonts render at slightly different metrics across Cairo / Pango / freetype versions. Text length depends on data. Coordinates set in dev don't match prod.
-2. **Coordination.** Captions are rendered by libass (a separate compositor). Content is rendered by Manim/matplotlib. Neither knows about the other's bounding boxes.
-3. **Compounding errors.** Each manual coordinate is a 95%-likely-to-work guess. Stack 50 of them per scene, 10 scenes per video — joint probability is ~7%.
-
-A brainstorm + research pass (reading Manim docs, broadcast standards, Motion Canvas source, kiwisolver examples, 3b1b's actual workflow from interviews) surfaced the five-layer pattern. The summary:
-
-- **Layer 1: geometric separation.** Use what TV broadcast figured out in the 1970s. Caption strips live in pixel rows the renderer doesn't address.
-- **Layer 2: relative positioning.** Motion Canvas uses Flexbox. iOS uses AutoLayout. Both compute positions from constraints — never hand-place.
-- **Layer 3: runtime asserts.** Fail loudly in code when bboxes collide. Cheaper than fixing it after the render.
-- **Layer 4: visual checks.** Sample frames, run a vision check (color variance, VLM). Catches what 1-3 missed.
-- **Layer 5: cheap iteration.** Sub-second feedback loop turns layout discipline from a chore into a game. Grant's `checkpoint_paste()` is this. `manim -ql -s` is the poor-man's version.
-
-The biggest unlock was Layer 1: realizing that captions overlapping content is a SOLVED PROBLEM (broadcast TV figured it out, SMPTE/EBU standardized it, BBC's subtitle guide tells you to use black bars), and we were re-creating the bug by burning captions on top of content. Once that one structural change is in, the remaining layers catch the rare edge cases.
-
-Cost-effectiveness: Layer 1 is ~5 lines of ffmpeg + Manim config. Layer 3 is ~50 lines. Layer 5 is ~30 lines. Together they prevent the most common failure shipping has ever produced.
+Add to this appendix after every project. Named idioms compound; named failures don't recur.
